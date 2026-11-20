@@ -1,6 +1,7 @@
 (() => {
   if (window.__CP_MANAGER_LOADED__) return;
   window.__CP_MANAGER_LOADED__ = true;
+
   const PROJECT_ID = "coupang-auto-9f7f0";
   const API_KEY = "AIzaSyDaySX9tYRXdftu7TGEdb5kG-nv44OqS90";
   const BASE_URL = `https://firestore.googleapis.com/v1/projects/${PROJECT_ID}/databases/(default)/documents/products`;
@@ -31,6 +32,18 @@
     return authState.email.split("@")[0];
   }
 
+  function formatDate(ts) {
+    const d = ts ? new Date(ts) : new Date();
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, "0");
+    const day = String(d.getDate()).padStart(2, "0");
+    return `${y}-${m}-${day}`;
+  }
+
+  function formatWon(num) {
+    return `${(Number(num) || 0).toLocaleString()}원`;
+  }
+
   // 1. 스타일 추가
   const style = document.createElement("style");
   style.textContent = `
@@ -47,10 +60,10 @@
       padding: 6px 14px; border-radius: 8px; letter-spacing: -0.3px;
     }
     .cp-brand-title { font-size: 16px; font-weight: 700; color: #fff; }
-    .cp-top-right { display: flex; align-items: center; gap: 10px; }
+    .cp-top-right { display: flex; align-items: center; gap: 8px; }
     .cp-sync-btn {
       background: #f59e0b !important; color: #fff !important; border: none !important;
-      padding: 8px 16px !important; border-radius: 8px !important; font-weight: 700 !important;
+      padding: 8px 14px !important; border-radius: 8px !important; font-weight: 700 !important;
       cursor: pointer; font-size: 13px !important; margin: 0 !important;
     }
     .cp-sync-btn:hover { background: #d97706 !important; }
@@ -77,14 +90,14 @@
     }
     .cp-sidebar-divider { border-top: 1px solid #e2e8f0; margin: 18px 0; }
     .cp-sidebar-footer { font-size: 12.5px; color: #475569; padding: 0 8px; line-height: 1.6; }
-    .cp-logout-btn {
-      margin-top: 10px !important; width: 100%;
-      background: #f1f5f9 !important; color: #475569 !important;
+    .cp-side-btn {
+      margin-top: 8px !important; width: 100%;
+      background: #f1f5f9 !important; color: #334155 !important;
       border: 1px solid #cbd5e1 !important; padding: 7px 10px !important;
       border-radius: 7px !important; font-size: 12.5px !important; font-weight: 600 !important;
       cursor: pointer;
     }
-    .cp-logout-btn:hover { background: #e2e8f0 !important; }
+    .cp-side-btn:hover { background: #e2e8f0 !important; }
 
     #cpContent { flex: 1; margin-left: 235px; min-width: 0; padding: 24px; }
     #cpContent > main { max-width: 960px !important; margin: 0 auto !important; padding: 0 !important; }
@@ -93,29 +106,37 @@
       background: #fff; border: 1px solid #e2e8f0; border-radius: 12px;
       padding: 22px; margin-bottom: 18px; box-shadow: 0 1px 3px rgba(0,0,0,0.03);
     }
+    .cp-card-head {
+      display: flex; justify-content: space-between; align-items: center;
+      margin-bottom: 14px; gap: 10px; flex-wrap: wrap;
+    }
     .cp-grid {
-      display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
       gap: 12px; margin-bottom: 12px;
     }
-    .cp-toolbar { display: flex; gap: 10px; margin-bottom: 14px; flex-wrap: wrap; }
-    .cp-toolbar input { max-width: 260px; }
+    .cp-toolbar { display: flex; gap: 10px; margin-bottom: 14px; flex-wrap: wrap; align-items: center; }
+    .cp-toolbar input { max-width: 240px; }
     .cp-toolbar select { max-width: 170px; }
 
     .cp-table-wrap { width: 100%; overflow-x: auto; }
-    .cp-table { width: 100%; border-collapse: collapse; font-size: 13.5px; table-layout: fixed; min-width: 740px; }
+    .cp-table { width: 100%; border-collapse: collapse; font-size: 13px; min-width: 1080px; }
     .cp-table th, .cp-table td {
-      padding: 12px 10px; border-bottom: 1px solid #e5e7eb; text-align: left; vertical-align: middle;
+      padding: 11px 8px; border-bottom: 1px solid #e5e7eb; text-align: left; vertical-align: middle;
     }
-    .cp-table th { background: #f8fafc; color: #334155; font-weight: 700; }
-    .cp-thumb { width: 54px; height: 54px; object-fit: cover; border-radius: 6px; background: #f1f5f9; }
-    .cp-memo-preview {
-      font-size: 12px; color: #64748b; margin-top: 4px;
-      display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
-      overflow: hidden; word-break: break-word;
+    .cp-table th {
+      background: #f8fafc; color: #334155; font-weight: 700; white-space: nowrap;
     }
-    .cp-worker-tag { font-size: 11px; color: #94a3b8; margin-top: 4px; }
-    .cp-row-status { width: 100%; font-size: 12.5px !important; padding: 6px !important; }
-    .cp-action-wrap { display: flex; gap: 5px; }
+    .cp-num-col { text-align: center !important; color: #64748b; font-weight: 700; }
+    .cp-price-col { text-align: right !important; white-space: nowrap; font-variant-numeric: tabular-nums; }
+    .cp-link-btn {
+      display: inline-block; background: #eff6ff; color: #1d4ed8;
+      padding: 4px 9px; border-radius: 6px; font-size: 12px; font-weight: 600;
+      text-decoration: none; white-space: nowrap;
+    }
+    .cp-link-btn:hover { background: #dbeafe; }
+    .cp-worker-tag { font-size: 11px; color: #94a3b8; margin-top: 3px; }
+    .cp-row-status { width: 100%; min-width: 125px; font-size: 12px !important; padding: 6px !important; }
+    .cp-action-wrap { display: flex; gap: 5px; white-space: nowrap; }
     .cp-edit-btn {
       background: #2563eb !important; color: #fff !important;
       padding: 6px 10px !important; font-size: 12px !important; border-radius: 6px !important; margin: 0 !important;
@@ -129,7 +150,6 @@
       padding: 9px 18px !important; border-radius: 8px !important; font-weight: 600 !important;
     }
 
-    /* 수정 모달 & 로그인 오버레이 */
     #cpEditModal, #cpLoginOverlay {
       position: fixed; inset: 0; z-index: 20000;
       background: rgba(15, 23, 42, 0.65);
@@ -138,15 +158,15 @@
     #cpLoginOverlay { background: #f4f6fa; z-index: 30000; }
     #cpEditModal[hidden], #cpLoginOverlay[hidden] { display: none !important; }
     .cp-modal-box {
-      background: #fff; width: 100%; max-width: 560px; border-radius: 14px;
-      padding: 24px; box-shadow: 0 20px 40px rgba(0,0,0,0.18);
+      background: #fff; width: 100%; max-width: 620px; max-height: 90vh; overflow-y: auto;
+      border-radius: 14px; padding: 24px; box-shadow: 0 20px 40px rgba(0,0,0,0.18);
     }
     .cp-login-box { max-width: 380px; text-align: center; }
     .cp-login-box h2 { margin: 0 0 8px; color: #003cb3; font-size: 22px; }
     .cp-login-box p { margin: 0 0 20px; color: #64748b; font-size: 13.5px; }
     .cp-login-box input { margin-bottom: 12px; padding: 11px 12px !important; }
     .cp-login-err { color: #dc2626; font-size: 12.5px; min-height: 18px; margin-bottom: 10px; }
-    .cp-modal-box h3 { margin: 0 0 16px; font-size: 18px; color: #0f172a; }
+    .cp-modal-box h3 { margin: 0 0 14px; font-size: 18px; color: #0f172a; }
     .cp-modal-box label { font-size: 12.5px; font-weight: 700; color: #475569; margin-bottom: 10px; text-align: left; }
     .cp-modal-footer { display: flex; justify-content: flex-end; gap: 8px; margin-top: 16px; }
     .cp-cancel-btn {
@@ -188,7 +208,7 @@
     <div class="cp-sidebar-footer">
       <div>☁️ 실시간 연동중</div>
       <div id="cpUserEmail" style="margin-top:6px;font-weight:700;color:#0f172a;"></div>
-      <button type="button" id="btnLogout" class="cp-logout-btn">로그아웃</button>
+      <button type="button" id="btnLogout" class="cp-side-btn">로그아웃</button>
     </div>
   `;
 
@@ -200,28 +220,36 @@
   listView.hidden = true;
   listView.innerHTML = `
     <div class="cp-card">
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">
+      <div class="cp-card-head">
         <h2 style="margin:0;">📦 등록된 상품 리스트 (<span id="mCount">0</span>개)</h2>
         <button type="button" id="btnRefresh" class="cp-primary-btn">🔄 새로고침</button>
       </div>
       <div class="cp-toolbar">
-        <input id="mSearch" type="text" placeholder="상품명 또는 메모 검색...">
+        <select id="mMonthFilter">
+          <option value="ALL">전체 월 보기</option>
+        </select>
         <select id="mFilter">
           <option value="ALL">전체 상태 보기</option>
           <option value="수집완료">수집완료</option>
           <option value="상세페이지 제작중">상세페이지 제작중</option>
           <option value="업로드 완료">업로드 완료</option>
         </select>
+        <input id="mSearch" type="text" placeholder="상품명, 품번, 메모 검색...">
       </div>
       <div class="cp-table-wrap">
         <table class="cp-table">
           <thead>
             <tr>
-              <th style="width:70px;">썸네일</th>
-              <th>상품명 / 메모</th>
-              <th style="width:95px;">판매가</th>
-              <th style="width:145px;">상태</th>
-              <th style="width:110px;">관리</th>
+              <th style="width:52px;text-align:center;">순번</th>
+              <th style="width:100px;">업로드 날짜</th>
+              <th style="min-width:210px;">상품명</th>
+              <th style="width:80px;">상품링크</th>
+              <th style="width:125px;">품번</th>
+              <th style="width:100px;text-align:right;">제품 할인가</th>
+              <th style="width:100px;text-align:right;">쿠팡 판매가</th>
+              <th style="width:100px;text-align:right;">정가</th>
+              <th style="width:140px;">상태</th>
+              <th style="width:105px;">관리</th>
             </tr>
           </thead>
           <tbody id="mTableBody"></tbody>
@@ -235,12 +263,17 @@
   addView.hidden = true;
   addView.innerHTML = `
     <div class="cp-card">
-      <h2>➕ 새 상품 직접 등록</h2>
+      <div class="cp-card-head">
+        <h2 style="margin:0;">➕ 새 상품 직접 등록</h2>
+      </div>
       <div class="cp-grid">
+        <label>업로드 날짜<input id="mUploadDate" type="date" value="${formatDate()}"></label>
         <label>상품명<input id="mName" type="text" placeholder="예: 닥스 남성 긴팔 카라 니트"></label>
-        <label>판매가 (원)<input id="mPrice" type="number" placeholder="예: 89000"></label>
-        <label>소싱처 URL<input id="mSourceUrl" type="url" placeholder="https://www.lfmall.co.kr/..."></label>
-        <label>썸네일 URL<input id="mThumbUrl" type="url" placeholder="https://..."></label>
+        <label>품번<input id="mCode" type="text" placeholder="예: DMSW6D301BK"></label>
+        <label>상품링크 (URL)<input id="mSourceUrl" type="url" placeholder="https://www.lfmall.co.kr/..."></label>
+        <label>제품 할인가 (원)<input id="mDiscountPrice" type="number" placeholder="예: 69000"></label>
+        <label>쿠팡 판매가 (원)<input id="mPrice" type="number" placeholder="예: 89000"></label>
+        <label>정가 (원)<input id="mRegularPrice" type="number" placeholder="예: 129000"></label>
         <label>진행 상태
           <select id="mStatus">
             <option value="수집완료">1. 수집완료</option>
@@ -262,20 +295,25 @@
   editModal.innerHTML = `
     <div class="cp-modal-box">
       <h3>✏️ 상품 정보 수정</h3>
-      <label>상품명<input id="eName" type="text"></label>
       <div class="cp-grid">
-        <label>판매가 (원)<input id="ePrice" type="number"></label>
-        <label>진행 상태
-          <select id="eStatus">
-            <option value="수집완료">수집완료</option>
-            <option value="상세페이지 제작중">상세페이지 제작중</option>
-            <option value="업로드 완료">업로드 완료</option>
-          </select>
-        </label>
+        <label>업로드 날짜<input id="eUploadDate" type="date"></label>
+        <label>품번<input id="eCode" type="text"></label>
       </div>
-      <label>소싱처 URL<input id="eSourceUrl" type="url"></label>
-      <label>썸네일 URL<input id="eThumbUrl" type="url"></label>
-      <label>상세페이지 문구 / 메모<textarea id="eCopy" rows="5"></textarea></label>
+      <label>상품명<input id="eName" type="text"></label>
+      <label>상품링크 (URL)<input id="eSourceUrl" type="url"></label>
+      <div class="cp-grid">
+        <label>제품 할인가 (원)<input id="eDiscountPrice" type="number"></label>
+        <label>쿠팡 판매가 (원)<input id="ePrice" type="number"></label>
+        <label>정가 (원)<input id="eRegularPrice" type="number"></label>
+      </div>
+      <label>진행 상태
+        <select id="eStatus">
+          <option value="수집완료">수집완료</option>
+          <option value="상세페이지 제작중">상세페이지 제작중</option>
+          <option value="업로드 완료">업로드 완료</option>
+        </select>
+      </label>
+      <label>상세페이지 문구 / 메모<textarea id="eCopy" rows="4"></textarea></label>
       <div class="cp-modal-footer">
         <button type="button" id="btnCancelEdit" class="cp-cancel-btn">취소</button>
         <button type="button" id="btnSaveEdit" class="cp-primary-btn">저장하기</button>
@@ -329,7 +367,7 @@
         body: JSON.stringify({ email, password, returnSecureToken: true })
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error?.message || "이메일 또는 비밀번호를 확인해 주세요.");
+      if (!res.ok) throw new Error(data.error?.message || "로그인 실패");
       saveAuth({
         idToken: data.idToken,
         refreshToken: data.refreshToken,
@@ -340,7 +378,7 @@
       document.getElementById("cpLoginPw").value = "";
       updateAuthUI();
       if (!listView.hidden) fetchProducts();
-    } catch (e) {
+    } catch {
       errEl.textContent = "로그인 실패: 이메일 또는 비밀번호를 확인하세요.";
     }
   }
@@ -426,10 +464,30 @@
 
   menuButtons.forEach(btn => btn.addEventListener("click", () => switchView(btn.dataset.view)));
 
-  // 5. Firebase CRUD 함수들 (작업자 자동 기록 포함)
+  // 5. 월별 필터 옵션 갱신
+  function updateMonthOptions() {
+    const select = document.getElementById("mMonthFilter");
+    const prev = select.value;
+    const months = [...new Set(
+      products.map(p => (p.uploadDate || "").slice(0, 7)).filter(Boolean)
+    )].sort((a, b) => b.localeCompare(a));
+
+    select.innerHTML = `<option value="ALL">전체 월 보기</option>`;
+    months.forEach(ym => {
+      const [y, m] = ym.split("-");
+      const opt = document.createElement("option");
+      opt.value = ym;
+      opt.textContent = `${y}년 ${Number(m)}월`;
+      select.appendChild(opt);
+    });
+
+    if (months.includes(prev)) select.value = prev;
+  }
+
+  // 6. Firebase CRUD 함수들
   async function fetchProducts() {
     const tbody = document.getElementById("mTableBody");
-    tbody.innerHTML = `<tr><td colspan="5" style="text-align:center;padding:30px;">데이터 불러오는 중...</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="10" style="text-align:center;padding:30px;">데이터 불러오는 중...</td></tr>`;
     try {
       const res = await authFetch(`${BASE_URL}?key=${API_KEY}`);
       const json = await res.json();
@@ -437,22 +495,29 @@
       const docs = json.documents || [];
       products = docs.map(doc => {
         const f = doc.fields || {};
+        const createdAt = Number(f.createdAt?.integerValue || f.createdAt?.doubleValue || 0);
         return {
           id: doc.name.split("/").pop(),
+          uploadDate: f.uploadDate?.stringValue || formatDate(createdAt || Date.now()),
           name: f.name?.stringValue || "",
-          price: Number(f.price?.integerValue || f.price?.doubleValue || 0),
+          code: f.code?.stringValue || "",
           sourceUrl: f.sourceUrl?.stringValue || "",
           thumbUrl: f.thumbUrl?.stringValue || "",
+          discountPrice: Number(f.discountPrice?.integerValue || f.discountPrice?.doubleValue || 0),
+          price: Number(f.price?.integerValue || f.price?.doubleValue || 0),
+          regularPrice: Number(f.regularPrice?.integerValue || f.regularPrice?.doubleValue || 0),
           status: f.status?.stringValue || "수집완료",
           copy: f.copy?.stringValue || "",
           author: f.author?.stringValue || "",
           updatedBy: f.updatedBy?.stringValue || "",
-          createdAt: Number(f.createdAt?.integerValue || f.createdAt?.doubleValue || 0)
+          createdAt
         };
-      }).sort((a, b) => b.createdAt - a.createdAt);
+      }).sort((a, b) => b.uploadDate.localeCompare(a.uploadDate) || b.createdAt - a.createdAt);
+
+      updateMonthOptions();
       renderList();
     } catch (err) {
-      tbody.innerHTML = `<tr><td colspan="5" style="text-align:center;color:#dc2626;padding:30px;">오류: ${err.message}</td></tr>`;
+      tbody.innerHTML = `<tr><td colspan="10" style="text-align:center;color:#dc2626;padding:30px;">오류: ${err.message}</td></tr>`;
     }
   }
 
@@ -460,10 +525,14 @@
     const user = getUserName();
     const payload = {
       fields: {
+        uploadDate: { stringValue: item.uploadDate || formatDate() },
         name: { stringValue: item.name },
-        price: { integerValue: String(Math.round(item.price || 0)) },
+        code: { stringValue: item.code || "" },
         sourceUrl: { stringValue: item.sourceUrl || "" },
         thumbUrl: { stringValue: item.thumbUrl || "" },
+        discountPrice: { integerValue: String(Math.round(item.discountPrice || 0)) },
+        price: { integerValue: String(Math.round(item.price || 0)) },
+        regularPrice: { integerValue: String(Math.round(item.regularPrice || 0)) },
         status: { stringValue: item.status || "상세페이지 제작중" },
         copy: { stringValue: item.copy || "" },
         author: { stringValue: user },
@@ -480,14 +549,21 @@
   }
 
   async function updateProductInFirebase(id, item) {
-    const masks = ["name", "price", "sourceUrl", "thumbUrl", "status", "copy", "updatedBy"]
-      .map(f => `updateMask.fieldPaths=${f}`).join("&");
+    const masks = [
+      "uploadDate", "name", "code", "sourceUrl",
+      "discountPrice", "price", "regularPrice",
+      "status", "copy", "updatedBy"
+    ].map(f => `updateMask.fieldPaths=${f}`).join("&");
+
     const payload = {
       fields: {
+        uploadDate: { stringValue: item.uploadDate || formatDate() },
         name: { stringValue: item.name },
-        price: { integerValue: String(Math.round(item.price || 0)) },
+        code: { stringValue: item.code || "" },
         sourceUrl: { stringValue: item.sourceUrl || "" },
-        thumbUrl: { stringValue: item.thumbUrl || "" },
+        discountPrice: { integerValue: String(Math.round(item.discountPrice || 0)) },
+        price: { integerValue: String(Math.round(item.price || 0)) },
+        regularPrice: { integerValue: String(Math.round(item.regularPrice || 0)) },
         status: { stringValue: item.status },
         copy: { stringValue: item.copy || "" },
         updatedBy: { stringValue: getUserName() }
@@ -520,15 +596,18 @@
     fetchProducts();
   }
 
-  // 6. 수정 모달
+  // 7. 수정 모달
   function openEditModal(p) {
     editingId = p.id;
-    document.getElementById("eName").value = p.name;
-    document.getElementById("ePrice").value = p.price;
-    document.getElementById("eStatus").value = p.status;
-    document.getElementById("eSourceUrl").value = p.sourceUrl;
-    document.getElementById("eThumbUrl").value = p.thumbUrl;
-    document.getElementById("eCopy").value = p.copy;
+    document.getElementById("eUploadDate").value = p.uploadDate || formatDate();
+    document.getElementById("eCode").value = p.code || "";
+    document.getElementById("eName").value = p.name || "";
+    document.getElementById("eSourceUrl").value = p.sourceUrl || "";
+    document.getElementById("eDiscountPrice").value = p.discountPrice || 0;
+    document.getElementById("ePrice").value = p.price || 0;
+    document.getElementById("eRegularPrice").value = p.regularPrice || 0;
+    document.getElementById("eStatus").value = p.status || "수집완료";
+    document.getElementById("eCopy").value = p.copy || "";
     editModal.hidden = false;
   }
 
@@ -543,11 +622,14 @@
     if (!name) return alert("상품명을 입력해 주세요.");
     try {
       await updateProductInFirebase(editingId, {
+        uploadDate: document.getElementById("eUploadDate").value || formatDate(),
+        code: document.getElementById("eCode").value.trim(),
         name,
-        price: Number(document.getElementById("ePrice").value) || 0,
-        status: document.getElementById("eStatus").value,
         sourceUrl: document.getElementById("eSourceUrl").value.trim(),
-        thumbUrl: document.getElementById("eThumbUrl").value.trim(),
+        discountPrice: Number(document.getElementById("eDiscountPrice").value) || 0,
+        price: Number(document.getElementById("ePrice").value) || 0,
+        regularPrice: Number(document.getElementById("eRegularPrice").value) || 0,
+        status: document.getElementById("eStatus").value,
         copy: document.getElementById("eCopy").value.trim()
       });
       editModal.hidden = true;
@@ -558,7 +640,7 @@
     }
   });
 
-  // 7. 제작실 -> 바로 저장
+  // 8. 제작실 -> 바로 저장
   document.getElementById("btnQuickSave").addEventListener("click", async () => {
     const brand = document.querySelector('input[placeholder="닥스"]')?.value.trim() || "";
     const code = document.querySelector('input[placeholder="DMSW6D301BK"]')?.value.trim() || "";
@@ -573,10 +655,14 @@
 
     try {
       await saveToFirebase({
+        uploadDate: formatDate(),
         name: fullName,
-        price: 0,
+        code,
         sourceUrl: storageData.url || "",
         thumbUrl: firstImg,
+        discountPrice: 0,
+        price: 0,
+        regularPrice: 0,
         status: "상세페이지 제작중",
         copy
       });
@@ -587,20 +673,25 @@
     }
   });
 
-  // 8. 수동 등록
+  // 9. 수동 등록
   document.getElementById("btnAddManual").addEventListener("click", async () => {
     const name = document.getElementById("mName").value.trim();
     if (!name) return alert("상품명을 입력해 주세요.");
     try {
       await saveToFirebase({
+        uploadDate: document.getElementById("mUploadDate").value || formatDate(),
         name,
-        price: Number(document.getElementById("mPrice").value) || 0,
+        code: document.getElementById("mCode").value.trim(),
         sourceUrl: document.getElementById("mSourceUrl").value.trim(),
-        thumbUrl: document.getElementById("mThumbUrl").value.trim(),
+        discountPrice: Number(document.getElementById("mDiscountPrice").value) || 0,
+        price: Number(document.getElementById("mPrice").value) || 0,
+        regularPrice: Number(document.getElementById("mRegularPrice").value) || 0,
         status: document.getElementById("mStatus").value,
         copy: document.getElementById("mCopy").value.trim()
       });
-      ["mName", "mPrice", "mSourceUrl", "mThumbUrl", "mCopy"].forEach(id => document.getElementById(id).value = "");
+      ["mName", "mCode", "mSourceUrl", "mDiscountPrice", "mPrice", "mRegularPrice", "mCopy"]
+        .forEach(id => (document.getElementById(id).value = ""));
+      document.getElementById("mUploadDate").value = formatDate();
       alert("✅ 상품이 등록되었습니다!");
       switchView("list");
     } catch (e) {
@@ -609,30 +700,36 @@
   });
 
   document.getElementById("btnRefresh").addEventListener("click", fetchProducts);
-  document.getElementById("mSearch").addEventListener("input", renderList);
+  document.getElementById("mMonthFilter").addEventListener("change", renderList);
   document.getElementById("mFilter").addEventListener("change", renderList);
+  document.getElementById("mSearch").addEventListener("input", renderList);
 
-  // 9. 테이블 렌더링
+  // 10. 테이블 렌더링
   function renderList() {
     const kw = document.getElementById("mSearch").value.trim().toLowerCase();
     const filter = document.getElementById("mFilter").value;
+    const monthFilter = document.getElementById("mMonthFilter").value;
     const tbody = document.getElementById("mTableBody");
 
     const filtered = products.filter(p => {
-      const matchText = p.name.toLowerCase().includes(kw) || p.copy.toLowerCase().includes(kw);
+      const matchText =
+        p.name.toLowerCase().includes(kw) ||
+        p.code.toLowerCase().includes(kw) ||
+        p.copy.toLowerCase().includes(kw);
       const matchStatus = filter === "ALL" || p.status === filter;
-      return matchText && matchStatus;
+      const matchMonth = monthFilter === "ALL" || (p.uploadDate || "").startsWith(monthFilter);
+      return matchText && matchStatus && matchMonth;
     });
 
     document.getElementById("mCount").textContent = filtered.length;
     tbody.innerHTML = "";
 
     if (!filtered.length) {
-      tbody.innerHTML = `<tr><td colspan="5" style="text-align:center;padding:30px;color:#64748b;">저장된 상품이 없습니다.</td></tr>`;
+      tbody.innerHTML = `<tr><td colspan="10" style="text-align:center;padding:30px;color:#64748b;">조건에 맞는 상품이 없습니다.</td></tr>`;
       return;
     }
 
-    filtered.forEach(p => {
+    filtered.forEach((p, idx) => {
       const tr = document.createElement("tr");
       const workerInfo = [
         p.author ? `등록: ${p.author}` : "",
@@ -640,15 +737,19 @@
       ].filter(Boolean).join(" · ");
 
       tr.innerHTML = `
-        <td>${p.thumbUrl ? `<img src="${p.thumbUrl}" class="cp-thumb">` : `<div class="cp-thumb"></div>`}</td>
+        <td class="cp-num-col">${idx + 1}</td>
+        <td style="white-space:nowrap;color:#475569;">${p.uploadDate}</td>
         <td>
-          <div style="font-weight:700;word-break:break-word;">
-            ${p.sourceUrl ? `<a href="${p.sourceUrl}" target="_blank" style="color:#003cb3;text-decoration:none;">${p.name} ↗</a>` : p.name}
-          </div>
-          <div class="cp-memo-preview" title="${p.copy.replace(/"/g, '"')}">${p.copy || "메모 없음"}</div>
+          <div style="font-weight:700;word-break:break-word;color:#0f172a;">${p.name}</div>
           ${workerInfo ? `<div class="cp-worker-tag">${workerInfo}</div>` : ""}
         </td>
-        <td style="font-weight:600;">${p.price.toLocaleString()}원</td>
+        <td>
+          ${p.sourceUrl ? `<a href="${p.sourceUrl}" target="_blank" class="cp-link-btn">링크 ↗</a>` : `<span style="color:#94a3b8;">-</span>`}
+        </td>
+        <td style="font-family:monospace;color:#334155;">${p.code || "-"}</td>
+        <td class="cp-price-col">${formatWon(p.discountPrice)}</td>
+        <td class="cp-price-col" style="font-weight:700;color:#003cb3;">${formatWon(p.price)}</td>
+        <td class="cp-price-col" style="color:#64748b;">${formatWon(p.regularPrice)}</td>
         <td>
           <select class="cp-row-status">
             <option value="수집완료" ${p.status === "수집완료" ? "selected" : ""}>수집완료</option>
@@ -670,6 +771,5 @@
     });
   }
 
-  // 초기 실행 시 로그인 여부 확인
   updateAuthUI();
 })();
