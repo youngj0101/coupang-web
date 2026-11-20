@@ -672,4 +672,469 @@
   const titles = {
     studio: "상세페이지·썸네일 제작실",
     list: "상품 리스트",
-    add: "새 상품 직접 등록
+    add: "새 상품 직접 등록"
+  };
+
+  function switchView(viewName) {
+    menuButtons.forEach(btn => btn.classList.toggle("active", btn.dataset.view === viewName));
+    titleEl.textContent = titles[viewName] || "";
+    if (studioMain) studioMain.hidden = viewName !== "studio";
+    listView.hidden = viewName !== "list";
+    addView.hidden = viewName !== "add";
+    if (viewName === "list") fetchProducts();
+  }
+
+  menuButtons.forEach(btn => btn.addEventListener("click", () => switchView(btn.dataset.view)));
+
+  // 5. 월별 필터 옵션 갱신
+  function updateMonthOptions() {
+    const select = document.getElementById("mMonthFilter");
+    const prev = select.value;
+    const months = [...new Set(
+      products.map(p => (p.uploadDate || "").slice(0, 7)).filter(Boolean)
+    )].sort((a, b) => b.localeCompare(a));
+
+    select.innerHTML = `<option value="ALL">전체 월 보기</option>`;
+    months.forEach(ym => {
+      const [y, m] = ym.split("-");
+      const opt = document.createElement("option");
+      opt.value = ym;
+      opt.textContent = `${y}년 ${Number(m)}월`;
+      select.appendChild(opt);
+    });
+    if (months.includes(prev)) select.value = prev;
+  }
+
+  function getFilteredProducts() {
+    const kw = document.getElementById("mSearch").value.trim().toLowerCase();
+    const filter = document.getElementById("mFilter").value;
+    const monthFilter = document.getElementById("mMonthFilter").value;
+    return products.filter(p => {
+      const matchText =
+        p.name.toLowerCase().includes(kw) ||
+        p.code.toLowerCase().includes(kw) ||
+        p.copy.toLowerCase().includes(kw);
+      const matchStatus = filter === "ALL" || p.status === filter;
+      const matchMonth = monthFilter === "ALL" || (p.uploadDate || "").startsWith(monthFilter);
+      return matchText && matchStatus && matchMonth;
+    });
+  }
+
+  // 6. Firebase CRUD
+  async function fetchProducts() {
+    const tbody = document.getElementById("mTableBody");
+    tbody.innerHTML = `<tr><td colspan="10" style="text-align:center;padding:30px;">데이터 불러오는 중...</td></tr>`;
+    try {
+      const res = await authFetch(`${BASE_URL}?key=${API_KEY}`);
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error?.message || "불러오기 실패");
+      const docs = json.documents || [];
+      products = docs.map(doc => {
+        const f = doc.fields || {};
+        const createdAt = Number(f.createdAt?.integerValue || f.createdAt?.doubleValue || 0);
+        return {
+          id: doc.name.split("/").pop(),
+          uploadDate: f.uploadDate?.stringValue || formatDate(createdAt || Date.now()),
+          brand: f.brand?.stringValue || "",
+          category: f.category?.stringValue || "",
+          colors: f.colors?.stringValue || "",
+          sizes: f.sizes?.stringValue || "",
+          name: f.name?.stringValue || "",
+          code: f.code?.stringValue || "",
+          sourceUrl: f.sourceUrl?.stringValue || "",
+          thumbUrl: f.thumbUrl?.stringValue || "",
+          detailImgUrl: f.detailImgUrl?.stringValue || "",
+          discountPrice: Number(f.discountPrice?.integerValue || f.discountPrice?.doubleValue || 0),
+          price: Number(f.price?.integerValue || f.price?.doubleValue || 0),
+          regularPrice: Number(f.regularPrice?.integerValue || f.regularPrice?.doubleValue || 0),
+          status: f.status?.stringValue || "수집완료",
+          copy: f.copy?.stringValue || "",
+          author: f.author?.stringValue || "",
+          updatedBy: f.updatedBy?.stringValue || "",
+          createdAt
+        };
+      }).sort((a, b) => b.uploadDate.localeCompare(a.uploadDate) || b.createdAt - a.createdAt);
+
+      updateMonthOptions();
+      renderList();
+    } catch (err) {
+      tbody.innerHTML = `<tr><td colspan="10" style="text-align:center;color:#dc2626;padding:30px;">오류: ${err.message}</td></tr>`;
+    }
+  }
+
+  async function saveToFirebase(item) {
+    const user = getUserName();
+    const payload = {
+      fields: {
+        uploadDate: { stringValue: item.uploadDate || formatDate() },
+        brand: { stringValue: item.brand || "" },
+        category: { stringValue: item.category || "" },
+        colors: { stringValue: item.colors || "" },
+        sizes: { stringValue: item.sizes || "" },
+        name: { stringValue: item.name },
+        code: { stringValue: item.code || "" },
+        sourceUrl: { stringValue: item.sourceUrl || "" },
+        thumbUrl: { stringValue: item.thumbUrl || "" },
+        detailImgUrl: { stringValue: item.detailImgUrl || "" },
+        discountPrice: { integerValue: String(Math.round(item.discountPrice || 0)) },
+        price: { integerValue: String(Math.round(item.price || 0)) },
+        regularPrice: { integerValue: String(Math.round(item.regularPrice || 0)) },
+        status: { stringValue: item.status || "상세페이지 제작중" },
+        copy: { stringValue: item.copy || "" },
+        author: { stringValue: user },
+        updatedBy: { stringValue: user },
+        createdAt: { integerValue: String(Date.now()) }
+      }
+    };
+    const res = await authFetch(`${BASE_URL}?key=${API_KEY}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload)
+    });
+    if (!res.ok) throw new Error("저장 실패 (권한 또는 로그인 확인)");
+  }
+
+  async function updateProductInFirebase(id, item) {
+    const fieldKeys = [
+      "uploadDate", "brand", "category", "colors", "sizes",
+      "name", "code", "sourceUrl", "thumbUrl", "detailImgUrl",
+      "discountPrice", "price", "regularPrice", "status", "copy", "updatedBy"
+    ];
+    const masks = fieldKeys.map(f => `updateMask.fieldPaths=${f}`).join("&");
+    const payload = {
+      fields: {
+        uploadDate: { stringValue: item.uploadDate || formatDate() },
+        brand: { stringValue: item.brand || "" },
+        category: { stringValue: item.category || "" },
+        colors: { stringValue: item.colors || "" },
+        sizes: { stringValue: item.sizes || "" },
+        name: { stringValue: item.name },
+        code: { stringValue: item.code || "" },
+        sourceUrl: { stringValue: item.sourceUrl || "" },
+        thumbUrl: { stringValue: item.thumbUrl || "" },
+        detailImgUrl: { stringValue: item.detailImgUrl || "" },
+        discountPrice: { integerValue: String(Math.round(item.discountPrice || 0)) },
+        price: { integerValue: String(Math.round(item.price || 0)) },
+        regularPrice: { integerValue: String(Math.round(item.regularPrice || 0)) },
+        status: { stringValue: item.status },
+        copy: { stringValue: item.copy || "" },
+        updatedBy: { stringValue: getUserName() }
+      }
+    };
+    const res = await authFetch(`${BASE_URL}/${id}?${masks}&key=${API_KEY}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload)
+    });
+    if (!res.ok) throw new Error("수정 실패");
+  }
+
+  async function updateStatusOnly(id, newStatus) {
+    await authFetch(`${BASE_URL}/${id}?updateMask.fieldPaths=status&updateMask.fieldPaths=updatedBy&key=${API_KEY}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        fields: {
+          status: { stringValue: newStatus },
+          updatedBy: { stringValue: getUserName() }
+        }
+      })
+    });
+  }
+
+  async function deleteProduct(id) {
+    if (!confirm("이 상품을 삭제할까요?")) return;
+    await authFetch(`${BASE_URL}/${id}?key=${API_KEY}`, { method: "DELETE" });
+    fetchProducts();
+  }
+
+  // 7. 쿠팡 V4.6 일괄등록 엑셀 다운로드 (117열 구조)
+  document.getElementById("btnExportExcel").addEventListener("click", async () => {
+    const list = getFilteredProducts();
+    if (!list.length) return alert("다운로드할 상품이 없습니다.");
+
+    try {
+      const XLSX = await loadSheetJS();
+      const COL_COUNT = 117;
+
+      const row1 = new Array(COL_COUNT).fill("");
+      row1[0] = "기본정보"; row1[9] = "구매옵션"; row1[21] = "검색옵션";
+      row1[61] = "구성 정보"; row1[88] = "고시정보"; row1[103] = "이미지";
+      row1[109] = "상품 상세 설명"; row1[110] = "구비서류";
+
+      const row2 = new Array(COL_COUNT).fill("");
+      const baseHeaders = ["카테고리", "등록상품명", "판매시작일", "판매종료일", "상품상태", "상태설명", "브랜드", "제조사", "검색어"];
+      baseHeaders.forEach((h, i) => (row2[i] = h));
+      for (let i = 0; i < 6; i++) { row2[9 + i * 2] = `옵션유형${i + 1}`; row2[10 + i * 2] = `옵션값${i + 1}`; }
+      for (let i = 0; i < 20; i++) { row2[21 + i * 2] = `옵션유형${i + 1}`; row2[22 + i * 2] = `옵션값${i + 1}`; }
+      const compHeaders = [
+        "판매가격", "판매대행수수료", "할인율기준가", "재고수량", "출고리드타임",
+        "인당최대구매수량", "최대구매수량기간(일)", "성인상품(19)", "과세여부", "병행수입여부",
+        "해외구매대행", "업체상품코드", "모델번호", "바코드",
+        "인증∙신고 등 정보유형", "인증∙신고 등 정보값", "인증∙이동통신 사전승낙서 또는 인증대리점 인증서", "인증∙판매점 사전승낙 인증마크 또는 이동통신사 대리점 인증마크",
+        "인증∙신고 등 정보유형", "인증∙신고 등 정보값", "인증∙이동통신 사전승낙서 또는 인증대리점 인증서", "인증∙판매점 사전승낙 인증마크 또는 이동통신사 대리점 인증마크",
+        "인증∙신고 등 정보유형", "인증∙신고 등 정보값", "인증∙이동통신 사전승낙서 또는 인증대리점 인증서", "인증∙판매점 사전승낙 인증마크 또는 이동통신사 대리점 인증마크",
+        "주문 추가메시지"
+      ];
+      compHeaders.forEach((h, i) => (row2[61 + i] = h));
+      row2[88] = "상품고시정보 카테고리";
+      for (let i = 1; i <= 14; i++) row2[88 + i] = `상품고시정보값${i}`;
+      ["대표(옵션)이미지", "대표이미지(직사각형)", "추가이미지", "상태이미지(중고상품)", "중복 이미지", "이미지 퀄리티"].forEach((h, i) => (row2[103 + i] = h));
+      row2[109] = "상세 설명";
+      for (let i = 1; i <= 7; i++) row2[109 + i] = `구비서류값${i}`;
+
+      const row3 = new Array(COL_COUNT).fill("");
+      [0, 1, 6, 7, 61, 63, 64, 65, 88, 103, 109].forEach(idx => (row3[idx] = "필수"));
+      const row4 = new Array(COL_COUNT).fill("");
+      row4[0] = "쿠팡 일괄등록 자동생성 파일 (5행부터 데이터)";
+
+      const aoa = [row1, row2, row3, row4];
+
+      list.forEach(p => {
+        const colors = (p.colors || "").split(",").map(s => s.trim()).filter(Boolean);
+        const sizes = (p.sizes || "").split(",").map(s => s.trim()).filter(Boolean);
+        const cList = colors.length ? colors : [""];
+        const sList = sizes.length ? sizes : [""];
+        const brandVal = p.brand || (p.name.split(" ")[0] || "자체브랜드");
+
+        cList.forEach(color => {
+          sList.forEach(size => {
+            const r = new Array(COL_COUNT).fill("");
+            r[0] = p.category || "";
+            r[1] = p.name || "";
+            r[2] = p.uploadDate || formatDate();
+            r[3] = "2099-12-31";
+            r[4] = "새상품";
+            r[6] = brandVal;
+            r[7] = brandVal;
+            if (color) { r[9] = "색상"; r[10] = color; }
+            if (size) { r[11] = "사이즈"; r[12] = size; }
+            r[61] = p.price || 0;
+            r[63] = p.regularPrice || p.price || 0;
+            r[64] = 999; // 재고수량
+            r[65] = 2;   // 출고리드타임
+            r[66] = 0;   // 인당최대구매수량
+            r[67] = 1;   // 최대구매수량기간
+            r[68] = "N"; // 성인상품
+            r[69] = "Y"; // 과세여부
+            r[70] = "N"; // 병행수입여부
+            r[71] = "N"; // 해외구매대행
+            r[72] = p.code || "";
+            r[73] = p.code || "";
+            r[74] = "[바코드없음]온라인 판매를 위한 소규모 제작 상품임";
+            r[75] = "인증∙신고 등 대상아님";
+            r[88] = "의류";
+            for (let i = 89; i <= 97; i++) r[i] = "상세페이지 참조";
+            r[103] = p.thumbUrl || "";
+            r[109] = p.detailImgUrl || p.thumbUrl || "";
+            aoa.push(r);
+          });
+        });
+      });
+
+      const wb = XLSX.utils.book_new();
+      const ws = XLSX.utils.aoa_to_sheet(aoa);
+      XLSX.utils.book_append_sheet(wb, ws, "기본");
+      XLSX.writeFile(wb, `쿠팡_일괄등록_${formatDate()}.xlsx`);
+    } catch (e) {
+      alert("엑셀 생성 오류: " + e.message);
+    }
+  });
+
+  // 8. 수정 모달
+  function openEditModal(p) {
+    editingId = p.id;
+    document.getElementById("eUploadDate").value = p.uploadDate || formatDate();
+    document.getElementById("eBrand").value = p.brand || "";
+    document.getElementById("eCode").value = p.code || "";
+    document.getElementById("eName").value = p.name || "";
+    document.getElementById("eCategory").value = p.category || "";
+    document.getElementById("eColors").value = p.colors || "";
+    document.getElementById("eSizes").value = p.sizes || "";
+    document.getElementById("eSourceUrl").value = p.sourceUrl || "";
+    document.getElementById("eThumbUrl").value = p.thumbUrl || "";
+    document.getElementById("eDetailImgUrl").value = p.detailImgUrl || "";
+    document.getElementById("eDiscountPrice").value = p.discountPrice || 0;
+    document.getElementById("ePrice").value = p.price || 0;
+    document.getElementById("eRegularPrice").value = p.regularPrice || 0;
+    document.getElementById("eStatus").value = p.status || "수집완료";
+    document.getElementById("eCopy").value = p.copy || "";
+    updateEditMargin();
+    editModal.hidden = false;
+  }
+
+  document.getElementById("btnCancelEdit").addEventListener("click", () => {
+    editModal.hidden = true;
+    editingId = null;
+  });
+
+  document.getElementById("btnSaveEdit").addEventListener("click", async () => {
+    if (!editingId) return;
+    const name = document.getElementById("eName").value.trim();
+    if (!name) return alert("상품명을 입력해 주세요.");
+    try {
+      await updateProductInFirebase(editingId, {
+        uploadDate: document.getElementById("eUploadDate").value || formatDate(),
+        brand: document.getElementById("eBrand").value.trim(),
+        code: document.getElementById("eCode").value.trim(),
+        name,
+        category: document.getElementById("eCategory").value.trim(),
+        colors: document.getElementById("eColors").value.trim(),
+        sizes: document.getElementById("eSizes").value.trim(),
+        sourceUrl: document.getElementById("eSourceUrl").value.trim(),
+        thumbUrl: document.getElementById("eThumbUrl").value.trim(),
+        detailImgUrl: document.getElementById("eDetailImgUrl").value.trim(),
+        discountPrice: Number(document.getElementById("eDiscountPrice").value) || 0,
+        price: Number(document.getElementById("ePrice").value) || 0,
+        regularPrice: Number(document.getElementById("eRegularPrice").value) || 0,
+        status: document.getElementById("eStatus").value,
+        copy: document.getElementById("eCopy").value.trim()
+      });
+      editModal.hidden = true;
+      editingId = null;
+      fetchProducts();
+    } catch (e) {
+      alert("수정 중 오류: " + e.message);
+    }
+  });
+
+  // 9. 제작실 -> 바로 저장
+  document.getElementById("btnQuickSave").addEventListener("click", async () => {
+    const brand = document.querySelector('input[placeholder="닥스"]')?.value.trim() || "";
+    const code = document.querySelector('input[placeholder="DMSW6D301BK"]')?.value.trim() || "";
+    const kind = document.querySelector('input[placeholder="긴팔 카라 니트"]')?.value.trim() || "";
+    const copy = document.getElementById("copy")?.value.trim() || "";
+    const firstImg = document.querySelector("#lfReceived img")?.src || "";
+
+    const storageData = (typeof chrome !== "undefined" && chrome.storage)
+      ? await new Promise(r => chrome.storage.local.get("lfMakerData", o => r(o.lfMakerData || {})))
+      : {};
+    const fullName = [brand, kind, code].filter(Boolean).join(" ") || storageData.title || "이름 없는 상품";
+
+    try {
+      await saveToFirebase({
+        uploadDate: formatDate(),
+        brand,
+        category: "",
+        colors: "",
+        sizes: "",
+        name: fullName,
+        code,
+        sourceUrl: storageData.url || "",
+        thumbUrl: firstImg,
+        detailImgUrl: "",
+        discountPrice: 0,
+        price: 0,
+        regularPrice: 0,
+        status: "상세페이지 제작중",
+        copy
+      });
+      alert(`✅ [${fullName}] 상품이 저장되었습니다!`);
+      if (!listView.hidden) fetchProducts();
+    } catch (e) {
+      alert("저장 중 오류: " + e.message);
+    }
+  });
+
+  // 10. 수동 등록
+  document.getElementById("btnAddManual").addEventListener("click", async () => {
+    const name = document.getElementById("mName").value.trim();
+    if (!name) return alert("상품명을 입력해 주세요.");
+    try {
+      await saveToFirebase({
+        uploadDate: document.getElementById("mUploadDate").value || formatDate(),
+        brand: document.getElementById("mBrand").value.trim(),
+        category: document.getElementById("mCategory").value.trim(),
+        colors: document.getElementById("mColors").value.trim(),
+        sizes: document.getElementById("mSizes").value.trim(),
+        name,
+        code: document.getElementById("mCode").value.trim(),
+        sourceUrl: document.getElementById("mSourceUrl").value.trim(),
+        thumbUrl: document.getElementById("mThumbUrl").value.trim(),
+        detailImgUrl: document.getElementById("mDetailImgUrl").value.trim(),
+        discountPrice: Number(document.getElementById("mDiscountPrice").value) || 0,
+        price: Number(document.getElementById("mPrice").value) || 0,
+        regularPrice: Number(document.getElementById("mRegularPrice").value) || 0,
+        status: document.getElementById("mStatus").value,
+        copy: document.getElementById("mCopy").value.trim()
+      });
+      ["mBrand", "mName", "mCategory", "mColors", "mSizes", "mCode", "mSourceUrl", "mThumbUrl", "mDetailImgUrl", "mDiscountPrice", "mPrice", "mRegularPrice", "mCopy"]
+        .forEach(id => (document.getElementById(id).value = ""));
+      document.getElementById("mUploadDate").value = formatDate();
+      updateAddMargin();
+      alert("✅ 상품이 등록되었습니다!");
+      switchView("list");
+    } catch (e) {
+      alert("저장 중 오류: " + e.message);
+    }
+  });
+
+  document.getElementById("btnRefresh").addEventListener("click", fetchProducts);
+  document.getElementById("mMonthFilter").addEventListener("change", renderList);
+  document.getElementById("mFilter").addEventListener("change", renderList);
+  document.getElementById("mSearch").addEventListener("input", renderList);
+
+  // 11. 테이블 렌더링
+  function renderList() {
+    const filtered = getFilteredProducts();
+    const tbody = document.getElementById("mTableBody");
+
+    document.getElementById("mCount").textContent = filtered.length;
+    tbody.innerHTML = "";
+
+    if (!filtered.length) {
+      tbody.innerHTML = `<tr><td colspan="10" style="text-align:center;padding:30px;color:#64748b;">조건에 맞는 상품이 없습니다.</td></tr>`;
+      return;
+    }
+
+    filtered.forEach((p, idx) => {
+      const tr = document.createElement("tr");
+      const { profit, rate } = calcMargin(p.discountPrice, p.price);
+      const marginBadge = p.price > 0
+        ? `<div class="cp-margin-badge ${profit >= 0 ? "pos" : "neg"}">${rate.toFixed(1)}% (${formatWon(profit)})</div>`
+        : "";
+      const workerInfo = [
+        p.author ? `등록: ${p.author}` : "",
+        p.updatedBy ? `수정: ${p.updatedBy}` : ""
+      ].filter(Boolean).join(" · ");
+
+      tr.innerHTML = `
+        <td class="cp-num-col">${idx + 1}</td>
+        <td style="white-space:nowrap;color:#475569;">${p.uploadDate}</td>
+        <td>
+          <div style="font-weight:700;word-break:break-word;color:#0f172a;">${p.name}</div>
+          ${workerInfo ? `<div class="cp-worker-tag">${workerInfo}</div>` : ""}
+        </td>
+        <td>
+          ${p.sourceUrl ? `<a href="${p.sourceUrl}" target="_blank" class="cp-link-btn">링크 ↗</a>` : `<span style="color:#94a3b8;">-</span>`}
+        </td>
+        <td style="font-family:monospace;color:#334155;">${p.code || "-"}</td>
+        <td class="cp-price-col">${formatWon(p.discountPrice)}</td>
+        <td class="cp-price-col">
+          <div style="font-weight:700;color:#003cb3;">${formatWon(p.price)}</div>
+          ${marginBadge}
+        </td>
+        <td class="cp-price-col" style="color:#64748b;">${formatWon(p.regularPrice)}</td>
+        <td>
+          <select class="cp-row-status">
+            <option value="수집완료" ${p.status === "수집완료" ? "selected" : ""}>수집완료</option>
+            <option value="상세페이지 제작중" ${p.status === "상세페이지 제작중" ? "selected" : ""}>상세페이지 제작중</option>
+            <option value="업로드 완료" ${p.status === "업로드 완료" ? "selected" : ""}>업로드 완료</option>
+          </select>
+        </td>
+        <td>
+          <div class="cp-action-wrap">
+            <button type="button" class="cp-edit-btn">수정</button>
+            <button type="button" class="cp-del-btn">삭제</button>
+          </div>
+        </td>
+      `;
+      tr.querySelector(".cp-row-status").addEventListener("change", e => updateStatusOnly(p.id, e.target.value));
+      tr.querySelector(".cp-edit-btn").addEventListener("click", () => openEditModal(p));
+      tr.querySelector(".cp-del-btn").addEventListener("click", () => deleteProduct(p.id));
+      tbody.appendChild(tr);
+    });
+  }
+
+  updateAuthUI();
+})();
