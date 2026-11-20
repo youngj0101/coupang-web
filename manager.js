@@ -9,76 +9,42 @@
   const REFRESH_URL = `https://securetoken.googleapis.com/v1/token?key=${API_KEY}`;
   const AUTH_STORAGE_KEY = "cp_team_auth_v1";
 
-  const DEFAULT_FEE_RATE = 11.55; // 쿠팡 수수료율 (%)
-  const DEFAULT_SHIPPING = 0;     // 기본 배송비 (원)
+  const DEFAULT_FEE_RATE = 11.55;
+  const DEFAULT_SHIPPING = 0;
 
-  // 남성 의류 카테고리 프리셋
-  const MENS_CATEGORIES = [
-    "패션의류잡화>남성패션>남성의류>가디건>남성 기본(허리길이)가디건",
-    "패션의류잡화>남성패션>남성의류>가디건>남성 롱 가디건",
-    "패션의류잡화>남성패션>남성의류>골프의류>남성 골프 니트/가디건",
-    "패션의류잡화>남성패션>남성의류>골프의류>남성 골프 바람막이/재킷",
-    "패션의류잡화>남성패션>남성의류>골프의류>남성 골프 바지",
-    "패션의류잡화>남성패션>남성의류>골프의류>남성 골프 셔츠",
-    "패션의류잡화>남성패션>남성의류>골프의류>남성 골프 조끼",
-    "패션의류잡화>남성패션>남성의류>골프의류>남성 골프 티셔츠",
-    "패션의류잡화>남성패션>남성의류>골프의류>남성 골프 패딩/다운패딩",
-    "패션의류잡화>남성패션>남성의류>남성 맨투맨",
-    "패션의류잡화>남성패션>남성의류>남성 베스트(조끼)",
-    "패션의류잡화>남성패션>남성의류>남성 와이셔츠(드레스셔츠)",
-    "패션의류잡화>남성패션>남성의류>남성 정장세트",
-    "패션의류잡화>남성패션>남성의류>남성 캐주얼 셔츠",
-    "패션의류잡화>남성패션>남성의류>남성 후드집업/집업류",
-    "패션의류잡화>남성패션>남성의류>남성 후드티",
-    "패션의류잡화>남성패션>남성의류>남성레깅스",
-    "패션의류잡화>남성패션>남성의류>등산/아웃도어 의류>남성 등산/아웃도어 니트/스웨터",
-    "패션의류잡화>남성패션>남성의류>등산/아웃도어 의류>남성 등산/아웃도어 바람막이/방수자켓",
-    "패션의류잡화>남성패션>남성의류>등산/아웃도어 의류>남성 등산/아웃도어 바지",
-    "패션의류잡화>남성패션>남성의류>등산/아웃도어 의류>남성 등산/아웃도어 셔츠",
-    "패션의류잡화>남성패션>남성의류>등산/아웃도어 의류>남성 등산/아웃도어 조끼",
-    "패션의류잡화>남성패션>남성의류>등산/아웃도어 의류>남성 등산/아웃도어 패딩/점퍼",
-    "패션의류잡화>남성패션>남성의류>등산/아웃도어 의류>남성 등산/아웃도어 플리스자켓",
-    "패션의류잡화>남성패션>남성의류>등산/아웃도어 의류>등산/아웃도어 티셔츠",
-    "패션의류잡화>남성패션>남성의류>바지/캐주얼>남성 긴바지",
-    "패션의류잡화>남성패션>남성의류>바지/캐주얼>남성 반바지",
-    "패션의류잡화>남성패션>남성의류>바지/캐주얼>남성 정장바지",
-    "패션의류잡화>남성패션>남성의류>스웨터/니트>남성 라운드넥",
-    "패션의류잡화>남성패션>남성의류>스웨터/니트>남성 브이넥",
-    "패션의류잡화>남성패션>남성의류>스웨터/니트>남성 카라넥",
-    "패션의류잡화>남성패션>남성의류>스웨터/니트>남성 터틀넥",
-    "패션의류잡화>남성패션>남성의류>스웨터/니트>남성 후드",
-    "패션의류잡화>남성패션>남성의류>스포츠의류>남성 스포츠 니트/스웨터",
-    "패션의류잡화>남성패션>남성의류>스포츠의류>남성 스포츠 상하의 세트",
-    "패션의류잡화>남성패션>남성의류>스포츠의류>남성 스포츠 셔츠",
-    "패션의류잡화>남성패션>남성의류>스포츠의류>댄스복",
-    "패션의류잡화>남성패션>남성의류>스포츠의류>발레복",
-    "패션의류잡화>남성패션>남성의류>스포츠의류>수영복",
-    "패션의류잡화>남성패션>남성의류>스포츠의류>스키/보드복",
-    "패션의류잡화>남성패션>남성의류>스포츠의류>스포츠 바지/레깅스",
-    "패션의류잡화>남성패션>남성의류>스포츠의류>스포츠 자켓/집업",
-    "패션의류잡화>남성패션>남성의류>스포츠의류>스포츠 티셔츠/나시",
-    "패션의류잡화>남성패션>남성의류>스포츠의류>에어로빅복",
-    "패션의류잡화>남성패션>남성의류>스포츠의류>요가/피트니스웨어",
-    "패션의류잡화>남성패션>남성의류>재킷>남성 정장재킷",
-    "패션의류잡화>남성패션>남성의류>재킷>남성 캐주얼재킷",
-    "패션의류잡화>남성패션>남성의류>점퍼>남성 기타 점퍼류",
-    "패션의류잡화>남성패션>남성의류>점퍼>남성 바람막이 점퍼",
-    "패션의류잡화>남성패션>남성의류>점퍼>남성 야구점퍼/스타디움",
-    "패션의류잡화>남성패션>남성의류>점퍼>남성 야상/사파리",
-    "패션의류잡화>남성패션>남성의류>점퍼>남성 패딩/다운패딩점퍼",
-    "패션의류잡화>남성패션>남성의류>점퍼>남성 패딩/다운패딩조끼",
-    "패션의류잡화>남성패션>남성의류>점퍼>남성 항공점퍼/블루종",
-    "패션의류잡화>남성패션>남성의류>청바지>남성 긴바지",
-    "패션의류잡화>남성패션>남성의류>청바지>남성 반바지",
-    "패션의류잡화>남성패션>남성의류>코트>남성 겨울 코트",
-    "패션의류잡화>남성패션>남성의류>코트>남성 봄가을 코트/트렌치",
-    "패션의류잡화>남성패션>남성의류>티셔츠>남성 긴소매",
-    "패션의류잡화>남성패션>남성의류>티셔츠>남성 민소매/나시",
-    "패션의류잡화>남성패션>남성의류>티셔츠>남성 반소매",
-    "패션의류잡화>남성패션>남성의류>패션 트레이닝복>남성 상의",
-    "패션의류잡화>남성패션>남성의류>패션 트레이닝복>남성 상하의 세트",
-    "패션의류잡화>남성패션>남성의류>패션 트레이닝복>남성 하의"
-  ];
+  // 2단계 세부 카테고리 트리 (남성 의류)
+  const CATEGORY_TREE = {
+    "가디건": ["남성 기본(허리길이)가디건", "남성 롱 가디건"],
+    "골프의류": [
+      "남성 골프 니트/가디건", "남성 골프 바람막이/재킷", "남성 골프 바지",
+      "남성 골프 셔츠", "남성 골프 조끼", "남성 골프 티셔츠", "남성 골프 패딩/다운패딩"
+    ],
+    "단품/기본 의류": [
+      "남성 맨투맨", "남성 베스트(조끼)", "남성 와이셔츠(드레스셔츠)", "남성 정장세트",
+      "남성 캐주얼 셔츠", "남성 후드집업/집업류", "남성 후드티", "남성레깅스"
+    ],
+    "등산/아웃도어 의류": [
+      "남성 등산/아웃도어 니트/스웨터", "남성 등산/아웃도어 바람막이/방수자켓",
+      "남성 등산/아웃도어 바지", "남성 등산/아웃도어 셔츠", "남성 등산/아웃도어 조끼",
+      "남성 등산/아웃도어 패딩/점퍼", "남성 등산/아웃도어 플리스자켓", "등산/아웃도어 티셔츠"
+    ],
+    "바지/캐주얼": ["남성 긴바지", "남성 반바지", "남성 정장바지"],
+    "스웨터/니트": ["남성 라운드넥", "남성 브이넥", "남성 카라넥", "남성 터틀넥", "남성 후드"],
+    "스포츠의류": [
+      "남성 스포츠 니트/스웨터", "남성 스포츠 상하의 세트", "남성 스포츠 셔츠",
+      "댄스복", "발레복", "수영복", "스키/보드복", "스포츠 바지/레깅스",
+      "스포츠 자켓/집업", "스포츠 티셔츠/나시", "에어로빅복", "요가/피트니스웨어"
+    ],
+    "재킷": ["남성 정장재킷", "남성 캐주얼재킷"],
+    "점퍼": [
+      "남성 기타 점퍼류", "남성 바람막이 점퍼", "남성 야구점퍼/스타디움",
+      "남성 야상/사파리", "남성 패딩/다운패딩점퍼", "남성 패딩/다운패딩조끼", "남성 항공점퍼/블루종"
+    ],
+    "청바지": ["남성 긴바지", "남성 반바지"],
+    "코트": ["남성 겨울 코트", "남성 봄가을 코트/트렌치"],
+    "티셔츠": ["남성 긴소매", "남성 민소매/나시", "남성 반소매"],
+    "패션 트레이닝복": ["남성 상의", "남성 상하의 세트", "남성 하의"]
+  };
 
   let products = [];
   let editingId = null;
@@ -105,29 +71,72 @@
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
   }
 
+  function parseNum(val) {
+    return Number(String(val ?? "").replace(/[^0-9-]/g, "")) || 0;
+  }
+
+  function formatComma(val) {
+    const raw = String(val ?? "").replace(/[^0-9]/g, "");
+    if (!raw) return "";
+    return Number(raw).toLocaleString();
+  }
+
   function formatWon(num) {
     return `${(Number(num) || 0).toLocaleString()}원`;
   }
 
+  function parseTags(str) {
+    return String(str || "")
+      .split(/[,/]+/)
+      .map(s => s.trim())
+      .filter(Boolean)
+      .slice(0, 20);
+  }
+
+  function buildCategoryPath(mainCat, subCat) {
+    if (!mainCat || !subCat) return "";
+    if (mainCat === "단품/기본 의류") return `패션의류잡화>남성패션>남성의류>${subCat}`;
+    return `패션의류잡화>남성패션>남성의류>${mainCat}>${subCat}`;
+  }
+
+  function parseCategoryPath(fullPath) {
+    if (!fullPath) return { main: "", sub: "" };
+    const parts = fullPath.split(">");
+    const last = parts[parts.length - 1] || "";
+    const prev = parts[parts.length - 2] || "";
+    if (CATEGORY_TREE[prev] && CATEGORY_TREE[prev].includes(last)) {
+      return { main: prev, sub: last };
+    }
+    if (CATEGORY_TREE["단품/기본 의류"].includes(last)) {
+      return { main: "단품/기본 의류", sub: last };
+    }
+    return { main: "", sub: "" };
+  }
+
+  // 마진율 계산 (부가세 차감 순수익 포함)
   function calcMargin(cost, salePrice, feeRate = DEFAULT_FEE_RATE, shipping = DEFAULT_SHIPPING) {
-    const c = Number(cost) || 0;
-    const s = Number(salePrice) || 0;
+    const c = parseNum(cost);
+    const s = parseNum(salePrice);
     const f = Number(feeRate) || 0;
-    const sh = Number(shipping) || 0;
+    const sh = parseNum(shipping);
     const fee = Math.round(s * (f / 100));
     const profit = s - c - fee - sh;
     const rate = s > 0 ? (profit / s) * 100 : 0;
-    return { fee, profit, rate };
+    // 일반과세자 예상 부가세: (매출 - 매입/수수료/배송비) / 11
+    const vat = profit > 0 ? Math.round(profit / 11) : 0;
+    const profitAfterVat = profit - vat;
+    const rateAfterVat = s > 0 ? (profitAfterVat / s) * 100 : 0;
+    return { fee, profit, rate, vat, profitAfterVat, rateAfterVat };
   }
 
+  // 1,000원 단위 반올림 판매가 계산
   function calcTargetSalePrice(cost, targetMarginPct, feeRate = DEFAULT_FEE_RATE, shipping = DEFAULT_SHIPPING) {
     const denom = 1 - (Number(feeRate) / 100) - (Number(targetMarginPct) / 100);
     if (denom <= 0) return 0;
-    const raw = (Number(cost) + Number(shipping)) / denom;
-    return Math.ceil(raw / 100) * 100;
+    const raw = (parseNum(cost) + parseNum(shipping)) / denom;
+    return Math.round(raw / 1000) * 1000;
   }
 
-  // SheetJS 동적 로드 (엑셀 생성용)
   function loadSheetJS() {
     return new Promise((resolve, reject) => {
       if (window.XLSX) return resolve(window.XLSX);
@@ -139,7 +148,7 @@
     });
   }
 
-  // 1. 스타일 추가
+  // 1. 스타일 추가 (폼 컴팩트하게 조정)
   const style = document.createElement("style");
   style.textContent = `
     body { margin: 0 !important; background: #f4f6fa !important; }
@@ -171,7 +180,7 @@
 
     #cpLayout { display: flex; min-height: 100vh; padding-top: 56px; }
     #cpSidebar {
-      width: 235px; flex-shrink: 0; background: #fff;
+      width: 225px; flex-shrink: 0; background: #fff;
       border-right: 1px solid #e2e8f0; padding: 20px 14px;
       position: fixed; top: 56px; bottom: 0; left: 0; overflow-y: auto;
       display: flex; flex-direction: column;
@@ -200,47 +209,88 @@
     }
     .cp-side-btn:hover { background: #e2e8f0 !important; }
 
-    #cpContent { flex: 1; margin-left: 235px; min-width: 0; padding: 24px; }
+    #cpContent { flex: 1; margin-left: 225px; min-width: 0; padding: 24px; }
     #cpContent > main { max-width: 960px !important; margin: 0 auto !important; padding: 0 !important; }
 
     .cp-card {
       background: #fff; border: 1px solid #e2e8f0; border-radius: 12px;
       padding: 22px; margin-bottom: 18px; box-shadow: 0 1px 3px rgba(0,0,0,0.03);
     }
+    /* 등록 폼 가로 폭 컴팩트하게 제한 */
+    .cp-form-card { max-width: 820px; margin: 0 auto; }
     .cp-card-head {
       display: flex; justify-content: space-between; align-items: center;
       margin-bottom: 14px; gap: 10px; flex-wrap: wrap;
     }
-    .cp-grid {
-      display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
-      gap: 12px; margin-bottom: 12px;
+    .cp-grid-2 { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; margin-bottom: 10px; }
+    .cp-grid-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-bottom: 10px; }
+    .cp-grid-4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 10px; }
+    @media (max-width: 760px) {
+      .cp-grid-2, .cp-grid-3, .cp-grid-4 { grid-template-columns: 1fr; }
     }
+    .cp-form-card label, .cp-modal-box label {
+      font-size: 12.5px; font-weight: 700; color: #475569; margin-bottom: 8px; display: block;
+    }
+    .cp-form-card input, .cp-form-card select, .cp-form-card textarea,
+    .cp-modal-box input, .cp-modal-box select, .cp-modal-box textarea {
+      width: 100%; padding: 8px 10px !important; font-size: 13.5px !important;
+      border: 1px solid #cbd5e1 !important; border-radius: 7px !important; margin-top: 4px !important;
+    }
+
     .cp-toolbar { display: flex; gap: 10px; margin-bottom: 14px; flex-wrap: wrap; align-items: center; }
     .cp-toolbar input { max-width: 240px; }
     .cp-toolbar select { max-width: 170px; }
 
-    /* 마진율 계산기 박스 */
-    .cp-margin-box {
-      background: #f8fafc; border: 1px solid #cbd5e1; border-radius: 10px;
-      padding: 14px 16px; margin: 12px 0 16px;
+    /* 옵션 테이블 */
+    .cp-opt-box {
+      background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 10px;
+      padding: 12px 14px; margin: 10px 0 14px;
     }
-    .cp-margin-title { font-size: 13px; font-weight: 700; color: #0f172a; margin-bottom: 10px; }
-    .cp-margin-row { display: flex; gap: 10px; flex-wrap: wrap; align-items: flex-end; }
-    .cp-margin-row label { flex: 1; min-width: 120px; margin: 0; font-size: 12px; color: #475569; }
-    .cp-margin-result {
-      margin-top: 12px; padding-top: 10px; border-top: 1px dashed #cbd5e1;
-      display: flex; gap: 18px; flex-wrap: wrap; font-size: 13.5px; font-weight: 700;
+    .cp-opt-head {
+      display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;
     }
-    .cp-profit-pos { color: #16a34a; }
-    .cp-profit-neg { color: #dc2626; }
-    .cp-calc-btn {
+    .cp-opt-head span { font-size: 13px; font-weight: 700; color: #0f172a; }
+    .cp-opt-add-btn {
       background: #0f172a !important; color: #fff !important; border: none !important;
-      padding: 8px 12px !important; border-radius: 7px !important; font-size: 12.5px !important;
-      font-weight: 600 !important; cursor: pointer; margin: 0 !important; height: 37px;
+      padding: 5px 11px !important; border-radius: 6px !important; font-size: 12px !important;
+      font-weight: 600 !important; cursor: pointer; margin: 0 !important;
+    }
+    .cp-opt-table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+    .cp-opt-table th { text-align: left; color: #64748b; padding: 4px 4px 6px; font-weight: 700; }
+    .cp-opt-table td { padding: 3px 4px; }
+    .cp-opt-table input { margin-top: 0 !important; padding: 6px 8px !important; font-size: 13px !important; }
+    .cp-opt-del-btn {
+      background: #fee2e2 !important; color: #dc2626 !important; border: none !important;
+      padding: 6px 9px !important; border-radius: 6px !important; font-weight: 700 !important;
+      cursor: pointer; margin: 0 !important;
     }
 
+    /* 마진율 계산기 박스 */
+    .cp-margin-box {
+      background: #f0f9ff; border: 1px solid #bae6fd; border-radius: 10px;
+      padding: 14px 16px; margin: 10px 0 14px;
+    }
+    .cp-margin-title { font-size: 13px; font-weight: 700; color: #0369a1; margin-bottom: 10px; }
+    .cp-margin-row { display: flex; gap: 10px; flex-wrap: wrap; align-items: flex-end; }
+    .cp-margin-row label { flex: 1; min-width: 110px; margin: 0 !important; font-size: 12px; color: #334155; }
+    .cp-margin-result {
+      margin-top: 12px; padding-top: 10px; border-top: 1px dashed #7dd3fc;
+      display: grid; grid-template-columns: repeat(2, 1fr); gap: 6px 14px;
+      font-size: 13px; font-weight: 700;
+    }
+    .cp-profit-pos { color: #15803d; }
+    .cp-profit-neg { color: #dc2626; }
+    .cp-calc-btn {
+      background: #0284c7 !important; color: #fff !important; border: none !important;
+      padding: 8px 12px !important; border-radius: 7px !important; font-size: 12.5px !important;
+      font-weight: 600 !important; cursor: pointer; margin: 0 !important; height: 36px;
+    }
+
+    .cp-tag-count { font-size: 11.5px; font-weight: 700; color: #003cb3; margin-left: 6px; }
+    .cp-tag-count.over { color: #dc2626; }
+
     .cp-table-wrap { width: 100%; overflow-x: auto; }
-    .cp-table { width: 100%; border-collapse: collapse; font-size: 13px; min-width: 1120px; }
+    .cp-table { width: 100%; border-collapse: collapse; font-size: 13px; min-width: 1140px; }
     .cp-table th, .cp-table td {
       padding: 11px 8px; border-bottom: 1px solid #e5e7eb; text-align: left; vertical-align: middle;
     }
@@ -253,6 +303,7 @@
     }
     .cp-margin-badge.pos { background: #dcfce7; color: #15803d; }
     .cp-margin-badge.neg { background: #fee2e2; color: #b91c1c; }
+    .cp-lf-sub { font-size: 11.5px; color: #64748b; margin-top: 2px; }
     .cp-link-btn {
       display: inline-block; background: #eff6ff; color: #1d4ed8;
       padding: 4px 9px; border-radius: 6px; font-size: 12px; font-weight: 600;
@@ -283,8 +334,8 @@
     #cpLoginOverlay { background: #f4f6fa; z-index: 30000; }
     #cpEditModal[hidden], #cpLoginOverlay[hidden] { display: none !important; }
     .cp-modal-box {
-      background: #fff; width: 100%; max-width: 680px; max-height: 92vh; overflow-y: auto;
-      border-radius: 14px; padding: 24px; box-shadow: 0 20px 40px rgba(0,0,0,0.18);
+      background: #fff; width: 100%; max-width: 740px; max-height: 92vh; overflow-y: auto;
+      border-radius: 14px; padding: 22px 24px; box-shadow: 0 20px 40px rgba(0,0,0,0.18);
     }
     .cp-login-box { max-width: 380px; text-align: center; }
     .cp-login-box h2 { margin: 0 0 8px; color: #003cb3; font-size: 22px; }
@@ -292,7 +343,6 @@
     .cp-login-box input { margin-bottom: 12px; padding: 11px 12px !important; }
     .cp-login-err { color: #dc2626; font-size: 12.5px; min-height: 18px; margin-bottom: 10px; }
     .cp-modal-box h3 { margin: 0 0 14px; font-size: 18px; color: #0f172a; }
-    .cp-modal-box label { font-size: 12.5px; font-weight: 700; color: #475569; margin-bottom: 10px; text-align: left; }
     .cp-modal-footer { display: flex; justify-content: flex-end; gap: 8px; margin-top: 16px; }
     .cp-cancel-btn {
       background: #e2e8f0 !important; color: #334155 !important;
@@ -300,12 +350,6 @@
     }
   `;
   document.head.appendChild(style);
-
-  // 카테고리 datalist
-  const catDataList = document.createElement("datalist");
-  catDataList.id = "cpCategoryOptions";
-  catDataList.innerHTML = MENS_CATEGORIES.map(c => `<option value="${c}"></option>`).join("");
-  document.body.appendChild(catDataList);
 
   // 2. 레이아웃 구성
   const studioMain = document.querySelector("main");
@@ -366,19 +410,19 @@
           <option value="상세페이지 제작중">상세페이지 제작중</option>
           <option value="업로드 완료">업로드 완료</option>
         </select>
-        <input id="mSearch" type="text" placeholder="상품명, 품번, 메모 검색...">
+        <input id="mSearch" type="text" placeholder="상품명, 품번, 태그 검색...">
       </div>
       <div class="cp-table-wrap">
         <table class="cp-table">
           <thead>
             <tr>
               <th style="width:48px;text-align:center;">순번</th>
-              <th style="width:96px;">업로드 날짜</th>
-              <th style="min-width:200px;">상품명</th>
-              <th style="width:74px;">상품링크</th>
-              <th style="width:120px;">품번</th>
+              <th style="width:94px;">업로드 날짜</th>
+              <th style="min-width:220px;">상품명 (쿠팡 / LF몰)</th>
+              <th style="width:72px;">상품링크</th>
+              <th style="width:125px;">품번</th>
               <th style="width:96px;text-align:right;">제품 할인가</th>
-              <th style="width:125px;text-align:right;">쿠팡 판매가 / 마진</th>
+              <th style="width:130px;text-align:right;">쿠팡 판매가 / 마진</th>
               <th style="width:96px;text-align:right;">정가</th>
               <th style="width:136px;">상태</th>
               <th style="width:102px;">관리</th>
@@ -390,61 +434,110 @@
     </div>
   `;
 
-  const addView = document.createElement("div");
-  addView.id = "cpAddView";
-  addView.hidden = true;
-  addView.innerHTML = `
-    <div class="cp-card">
-      <div class="cp-card-head"><h2 style="margin:0;">➕ 새 상품 직접 등록</h2></div>
-      <div class="cp-grid">
-        <label>업로드 날짜<input id="mUploadDate" type="date" value="${formatDate()}"></label>
-        <label>브랜드<input id="mBrand" type="text" placeholder="예: 닥스"></label>
-        <label>품번<input id="mCode" type="text" placeholder="예: DMSW6D301BK"></label>
+  function buildFormHTML(p) {
+    const mainOpts = Object.keys(CATEGORY_TREE)
+      .map(k => `<option value="${k}">${k}</option>`).join("");
+    return `
+      <div class="cp-grid-3">
+        <label>업로드 날짜<input id="${p}UploadDate" type="date" value="${formatDate()}"></label>
+        <label>브랜드<input id="${p}Brand" type="text" placeholder="예: 닥스"></label>
         <label>진행 상태
-          <select id="mStatus">
+          <select id="${p}Status">
             <option value="수집완료">1. 수집완료</option>
             <option value="상세페이지 제작중">2. 상세페이지 제작중</option>
             <option value="업로드 완료">3. 쿠팡 업로드 완료</option>
           </select>
         </label>
       </div>
-      <label>상품명<input id="mName" type="text" placeholder="예: 닥스 남성 긴팔 카라 니트"></label>
-      <label>쿠팡 카테고리 (클릭 또는 검색)<input id="mCategory" list="cpCategoryOptions" placeholder="예: 남성 카라넥, 남성 패딩 등 검색..."></label>
-      <div class="cp-grid">
-        <label>색상 옵션 (쉼표 구분)<input id="mColors" type="text" placeholder="예: 블랙, 네이비"></label>
-        <label>사이즈 옵션 (쉼표 구분)<input id="mSizes" type="text" placeholder="예: 95, 100, 105"></label>
-      </div>
-      <div class="cp-grid">
-        <label>상품링크 (URL)<input id="mSourceUrl" type="url" placeholder="https://www.lfmall.co.kr/..."></label>
-        <label>대표이미지 URL<input id="mThumbUrl" type="url" placeholder="https://..."></label>
-        <label>상세설명 이미지 URL<input id="mDetailImgUrl" type="url" placeholder="https://... (여러 개는 쉼표 구분)"></label>
-      </div>
-      <div class="cp-grid">
-        <label>제품 할인가 (소싱가/원)<input id="mDiscountPrice" type="number" placeholder="예: 69000"></label>
-        <label>쿠팡 판매가 (원)<input id="mPrice" type="number" placeholder="예: 89000"></label>
-        <label>정가 (할인율기준가/원)<input id="mRegularPrice" type="number" placeholder="예: 129000"></label>
+
+      <div class="cp-grid-2">
+        <label>쿠팡 상품명 (필수)<input id="${p}Name" type="text" placeholder="쿠팡 노출용 상품명"></label>
+        <label>LF몰 상품명<input id="${p}LfName" type="text" placeholder="소싱처(LF몰) 원본 상품명"></label>
       </div>
 
-      <!-- 마진율 자동계산기 (등록용) -->
-      <div class="cp-margin-box">
-        <div class="cp-margin-title">🧮 마진율 자동계산기 (기본 수수료 11.55% · 무료배송 0원)</div>
-        <div class="cp-margin-row">
-          <label>수수료율 (%)<input id="mFeeRate" type="number" step="0.01" value="${DEFAULT_FEE_RATE}"></label>
-          <label>배송비 부담 (원)<input id="mShipping" type="number" value="${DEFAULT_SHIPPING}"></label>
-          <label>목표 마진율 (%)<input id="mTargetMargin" type="number" placeholder="예: 20"></label>
-          <button type="button" id="btnCalcAddPrice" class="cp-calc-btn">판매가 자동 계산</button>
+      <div class="cp-grid-2">
+        <label>카테고리 중분류
+          <select id="${p}CatMain">
+            <option value="">중분류 선택</option>
+            ${mainOpts}
+          </select>
+        </label>
+        <label>세부 카테고리
+          <select id="${p}CatSub">
+            <option value="">먼저 중분류를 선택하세요</option>
+          </select>
+        </label>
+      </div>
+
+      <!-- 색상별 품번 / 사이즈별 재고 옵션 테이블 -->
+      <div class="cp-opt-box">
+        <div class="cp-opt-head">
+          <span>🎨 옵션 관리 (색상별 품번 · 사이즈별 재고)</span>
+          <button type="button" id="${p}BtnAddOpt" class="cp-opt-add-btn">+ 옵션 행 추가</button>
         </div>
-        <div id="mMarginResult" class="cp-margin-result">
+        <table class="cp-opt-table">
+          <thead>
+            <tr>
+              <th style="width:22%;">색상</th>
+              <th style="width:32%;">색상별 품번 (상품코드)</th>
+              <th style="width:20%;">사이즈</th>
+              <th style="width:18%;">재고수량</th>
+              <th style="width:8%;"></th>
+            </tr>
+          </thead>
+          <tbody id="${p}OptBody"></tbody>
+        </table>
+      </div>
+
+      <label>
+        검색 태그 (최대 20개, 쉼표 또는 / 구분)
+        <span id="${p}TagCount" class="cp-tag-count">0 / 20개</span>
+        <input id="${p}Tags" type="text" placeholder="예: 남성니트, 카라니트, 출근룩, 봄니트, 데일리룩">
+      </label>
+
+      <div class="cp-grid-3">
+        <label>상품링크 (URL)<input id="${p}SourceUrl" type="url" placeholder="https://www.lfmall.co.kr/..."></label>
+        <label>대표이미지 URL<input id="${p}ThumbUrl" type="url" placeholder="https://..."></label>
+        <label>상세설명 이미지 URL<input id="${p}DetailImgUrl" type="url" placeholder="https://..."></label>
+      </div>
+
+      <div class="cp-grid-3">
+        <label>제품 할인가 (소싱가/원)<input id="${p}DiscountPrice" class="cp-money-input" type="text" inputmode="numeric" placeholder="예: 69,000"></label>
+        <label>쿠팡 판매가 (원)<input id="${p}Price" class="cp-money-input" type="text" inputmode="numeric" placeholder="예: 89,000"></label>
+        <label>정가 (할인율기준가/원)<input id="${p}RegularPrice" class="cp-money-input" type="text" inputmode="numeric" placeholder="예: 129,000"></label>
+      </div>
+
+      <!-- 마진율 자동계산기 -->
+      <div class="cp-margin-box">
+        <div class="cp-margin-title">🧮 마진율 자동계산기 (수수료 11.55% · 무료배송 0원 · 1,000원 단위 반올림)</div>
+        <div class="cp-margin-row">
+          <label>수수료율 (%)<input id="${p}FeeRate" type="number" step="0.01" value="${DEFAULT_FEE_RATE}"></label>
+          <label>배송비 부담 (원)<input id="${p}Shipping" class="cp-money-input" type="text" inputmode="numeric" value="${DEFAULT_SHIPPING}"></label>
+          <label>목표 마진율 (%)<input id="${p}TargetMargin" type="number" placeholder="예: 20"></label>
+          <button type="button" id="${p}BtnCalcPrice" class="cp-calc-btn">판매가 자동 계산</button>
+        </div>
+        <div id="${p}MarginResult" class="cp-margin-result">
           <span>수수료: 0원</span>
-          <span>예상 순수익: 0원</span>
-          <span>마진율: 0.0%</span>
+          <span>예상 부가세: 0원</span>
+          <span>예상 순수익: 0원 (0.0%)</span>
+          <span>부가세 포함 순수익: 0원 (0.0%)</span>
         </div>
       </div>
 
       <label>상세페이지 문구 / 메모
-        <textarea id="mCopy" rows="3" placeholder="CHECK POINT 문구나 메모를 입력하세요"></textarea>
+        <textarea id="${p}Copy" rows="3" placeholder="CHECK POINT 문구나 메모를 입력하세요"></textarea>
       </label>
-      <button type="button" id="btnAddManual" class="cp-primary-btn">+ 상품 저장하기</button>
+    `;
+  }
+
+  const addView = document.createElement("div");
+  addView.id = "cpAddView";
+  addView.hidden = true;
+  addView.innerHTML = `
+    <div class="cp-card cp-form-card">
+      <div class="cp-card-head"><h2 style="margin:0;">➕ 새 상품 직접 등록</h2></div>
+      ${buildFormHTML("m")}
+      <button type="button" id="btnAddManual" class="cp-primary-btn" style="margin-top:6px;">+ 상품 저장하기</button>
     </div>
   `;
 
@@ -454,52 +547,7 @@
   editModal.innerHTML = `
     <div class="cp-modal-box">
       <h3>✏️ 상품 정보 수정</h3>
-      <div class="cp-grid">
-        <label>업로드 날짜<input id="eUploadDate" type="date"></label>
-        <label>브랜드<input id="eBrand" type="text"></label>
-        <label>품번<input id="eCode" type="text"></label>
-      </div>
-      <label>상품명<input id="eName" type="text"></label>
-      <label>쿠팡 카테고리<input id="eCategory" list="cpCategoryOptions" placeholder="카테고리 선택 또는 검색"></label>
-      <div class="cp-grid">
-        <label>색상 옵션 (쉼표 구분)<input id="eColors" type="text" placeholder="예: 블랙, 네이비"></label>
-        <label>사이즈 옵션 (쉼표 구분)<input id="eSizes" type="text" placeholder="예: 95, 100, 105"></label>
-      </div>
-      <div class="cp-grid">
-        <label>상품링크 (URL)<input id="eSourceUrl" type="url"></label>
-        <label>대표이미지 URL<input id="eThumbUrl" type="url"></label>
-        <label>상세설명 이미지 URL<input id="eDetailImgUrl" type="url"></label>
-      </div>
-      <div class="cp-grid">
-        <label>제품 할인가 (소싱가/원)<input id="eDiscountPrice" type="number"></label>
-        <label>쿠팡 판매가 (원)<input id="ePrice" type="number"></label>
-        <label>정가 (할인율기준가/원)<input id="eRegularPrice" type="number"></label>
-      </div>
-
-      <!-- 마진율 자동계산기 (수정용) -->
-      <div class="cp-margin-box">
-        <div class="cp-margin-title">🧮 마진율 자동계산기</div>
-        <div class="cp-margin-row">
-          <label>수수료율 (%)<input id="eFeeRate" type="number" step="0.01" value="${DEFAULT_FEE_RATE}"></label>
-          <label>배송비 부담 (원)<input id="eShipping" type="number" value="${DEFAULT_SHIPPING}"></label>
-          <label>목표 마진율 (%)<input id="eTargetMargin" type="number" placeholder="예: 20"></label>
-          <button type="button" id="btnCalcEditPrice" class="cp-calc-btn">판매가 자동 계산</button>
-        </div>
-        <div id="eMarginResult" class="cp-margin-result">
-          <span>수수료: 0원</span>
-          <span>예상 순수익: 0원</span>
-          <span>마진율: 0.0%</span>
-        </div>
-      </div>
-
-      <label>진행 상태
-        <select id="eStatus">
-          <option value="수집완료">수집완료</option>
-          <option value="상세페이지 제작중">상세페이지 제작중</option>
-          <option value="업로드 완료">업로드 완료</option>
-        </select>
-      </label>
-      <label>상세페이지 문구 / 메모<textarea id="eCopy" rows="3"></textarea></label>
+      ${buildFormHTML("e")}
       <div class="cp-modal-footer">
         <button type="button" id="btnCancelEdit" class="cp-cancel-btn">취소</button>
         <button type="button" id="btnSaveEdit" class="cp-primary-btn">저장하기</button>
@@ -532,41 +580,140 @@
   document.body.appendChild(editModal);
   document.body.appendChild(loginOverlay);
 
-  // 마진율 계산기 이벤트 바인딩 함수
-  function bindMarginCalc(prefix, btnId) {
-    const costEl = document.getElementById(`${prefix}DiscountPrice`);
-    const priceEl = document.getElementById(`${prefix}Price`);
-    const feeEl = document.getElementById(`${prefix}FeeRate`);
-    const shipEl = document.getElementById(`${prefix}Shipping`);
-    const targetEl = document.getElementById(`${prefix}TargetMargin`);
-    const resEl = document.getElementById(`${prefix}MarginResult`);
+  // 금액 입력창 자동 콤마 적용
+  document.addEventListener("input", e => {
+    if (e.target.classList.contains("cp-money-input")) {
+      e.target.value = formatComma(e.target.value);
+    }
+  });
+
+  // 2단계 카테고리 연동
+  function setupCategorySelects(p) {
+    const mainEl = document.getElementById(`${p}CatMain`);
+    const subEl = document.getElementById(`${p}CatSub`);
+    function fillSub(selectedSub = "") {
+      const subs = CATEGORY_TREE[mainEl.value] || [];
+      subEl.innerHTML = subs.length
+        ? subs.map(s => `<option value="${s}">${s}</option>`).join("")
+        : `<option value="">먼저 중분류를 선택하세요</option>`;
+      if (selectedSub && subs.includes(selectedSub)) subEl.value = selectedSub;
+    }
+    mainEl.addEventListener("change", () => fillSub());
+    return {
+      setPath(fullPath) {
+        const { main, sub } = parseCategoryPath(fullPath);
+        mainEl.value = main;
+        fillSub(sub);
+      },
+      getPath() {
+        return buildCategoryPath(mainEl.value, subEl.value);
+      }
+    };
+  }
+
+  const addCatCtrl = setupCategorySelects("m");
+  const editCatCtrl = setupCategorySelects("e");
+
+  // 옵션 테이블 관리 (색상 / 색상별 품번 / 사이즈 / 재고)
+  function setupOptionTable(p) {
+    const tbody = document.getElementById(`${p}OptBody`);
+    function addRow(opt = { color: "", code: "", size: "", stock: 999 }) {
+      const tr = document.createElement("tr");
+      tr.innerHTML = `
+        <td><input type="text" class="opt-color" placeholder="예: 블랙" value="${opt.color || ""}"></td>
+        <td><input type="text" class="opt-code" placeholder="예: DMSW6D301BK" value="${opt.code || ""}"></td>
+        <td><input type="text" class="opt-size" placeholder="예: 100" value="${opt.size || ""}"></td>
+        <td><input type="number" class="opt-stock" min="0" value="${opt.stock ?? 999}"></td>
+        <td><button type="button" class="cp-opt-del-btn">×</button></td>
+      `;
+      tr.querySelector(".cp-opt-del-btn").addEventListener("click", () => {
+        if (tbody.children.length > 1) tr.remove();
+        else tr.querySelectorAll("input").forEach(i => (i.value = i.classList.contains("opt-stock") ? 999 : ""));
+      });
+      tbody.appendChild(tr);
+    }
+    document.getElementById(`${p}BtnAddOpt`).addEventListener("click", () => {
+      // 직전 행의 색상/품번을 복사해 편의성 향상
+      const last = tbody.lastElementChild;
+      const lastColor = last?.querySelector(".opt-color")?.value || "";
+      const lastCode = last?.querySelector(".opt-code")?.value || "";
+      addRow({ color: lastColor, code: lastCode, size: "", stock: 999 });
+    });
+    addRow();
+    return {
+      setOptions(list) {
+        tbody.innerHTML = "";
+        if (Array.isArray(list) && list.length) list.forEach(o => addRow(o));
+        else addRow();
+      },
+      getOptions() {
+        return [...tbody.querySelectorAll("tr")].map(tr => ({
+          color: tr.querySelector(".opt-color").value.trim(),
+          code: tr.querySelector(".opt-code").value.trim(),
+          size: tr.querySelector(".opt-size").value.trim(),
+          stock: Number(tr.querySelector(".opt-stock").value) || 0
+        })).filter(o => o.color || o.code || o.size);
+      }
+    };
+  }
+
+  const addOptCtrl = setupOptionTable("m");
+  const editOptCtrl = setupOptionTable("e");
+
+  // 태그 20개 카운터
+  function setupTagCounter(p) {
+    const input = document.getElementById(`${p}Tags`);
+    const badge = document.getElementById(`${p}TagCount`);
+    function update() {
+      const rawList = String(input.value || "").split(/[,/]+/).map(s => s.trim()).filter(Boolean);
+      badge.textContent = `${rawList.length} / 20개`;
+      badge.classList.toggle("over", rawList.length > 20);
+    }
+    input.addEventListener("input", update);
+    return update;
+  }
+
+  const updateAddTags = setupTagCounter("m");
+  const updateEditTags = setupTagCounter("e");
+
+  // 마진율 계산기 바인딩 (부가세 포함 순수익 + 1,000원 단위 반올림)
+  function bindMarginCalc(p) {
+    const costEl = document.getElementById(`${p}DiscountPrice`);
+    const priceEl = document.getElementById(`${p}Price`);
+    const feeEl = document.getElementById(`${p}FeeRate`);
+    const shipEl = document.getElementById(`${p}Shipping`);
+    const targetEl = document.getElementById(`${p}TargetMargin`);
+    const resEl = document.getElementById(`${p}MarginResult`);
 
     function update() {
-      const { fee, profit, rate } = calcMargin(costEl.value, priceEl.value, feeEl.value, shipEl.value);
-      const cls = profit >= 0 ? "cp-profit-pos" : "cp-profit-neg";
+      const { fee, profit, rate, vat, profitAfterVat, rateAfterVat } =
+        calcMargin(costEl.value, priceEl.value, feeEl.value, shipEl.value);
+      const c1 = profit >= 0 ? "cp-profit-pos" : "cp-profit-neg";
+      const c2 = profitAfterVat >= 0 ? "cp-profit-pos" : "cp-profit-neg";
       resEl.innerHTML = `
-        <span>수수료: ${formatWon(fee)}</span>
-        <span class="${cls}">예상 순수익: ${formatWon(profit)}</span>
-        <span class="${cls}">마진율: ${rate.toFixed(1)}%</span>
+        <span>쿠팡 수수료: ${formatWon(fee)}</span>
+        <span>예상 부가세: ${formatWon(vat)}</span>
+        <span class="${c1}">예상 순수익: ${formatWon(profit)} (${rate.toFixed(1)}%)</span>
+        <span class="${c2}">부가세 포함 순수익: ${formatWon(profitAfterVat)} (${rateAfterVat.toFixed(1)}%)</span>
       `;
     }
 
     [costEl, priceEl, feeEl, shipEl].forEach(el => el.addEventListener("input", update));
-    document.getElementById(btnId).addEventListener("click", () => {
-      const cost = Number(costEl.value) || 0;
+    document.getElementById(`${p}BtnCalcPrice`).addEventListener("click", () => {
+      const cost = parseNum(costEl.value);
       const target = Number(targetEl.value) || 0;
       if (!cost) return alert("먼저 제품 할인가(소싱가)를 입력해 주세요.");
       if (!target) return alert("목표 마진율(%)을 입력해 주세요.");
       const recommended = calcTargetSalePrice(cost, target, feeEl.value, shipEl.value);
       if (!recommended) return alert("목표 마진율이 너무 높습니다.");
-      priceEl.value = recommended;
+      priceEl.value = formatComma(recommended);
       update();
     });
     return update;
   }
 
-  const updateAddMargin = bindMarginCalc("m", "btnCalcAddPrice");
-  const updateEditMargin = bindMarginCalc("e", "btnCalcEditPrice");
+  const updateAddMargin = bindMarginCalc("m");
+  const updateEditMargin = bindMarginCalc("e");
 
   // 3. 인증 및 토큰 자동 갱신
   function updateAuthUI() {
@@ -686,7 +833,7 @@
 
   menuButtons.forEach(btn => btn.addEventListener("click", () => switchView(btn.dataset.view)));
 
-  // 5. 월별 필터 옵션 갱신
+  // 5. 월별 필터
   function updateMonthOptions() {
     const select = document.getElementById("mMonthFilter");
     const prev = select.value;
@@ -710,9 +857,13 @@
     const filter = document.getElementById("mFilter").value;
     const monthFilter = document.getElementById("mMonthFilter").value;
     return products.filter(p => {
+      const optCodes = (p.options || []).map(o => o.code).join(" ").toLowerCase();
       const matchText =
         p.name.toLowerCase().includes(kw) ||
+        p.lfName.toLowerCase().includes(kw) ||
         p.code.toLowerCase().includes(kw) ||
+        optCodes.includes(kw) ||
+        p.tags.toLowerCase().includes(kw) ||
         p.copy.toLowerCase().includes(kw);
       const matchStatus = filter === "ALL" || p.status === filter;
       const matchMonth = monthFilter === "ALL" || (p.uploadDate || "").startsWith(monthFilter);
@@ -732,15 +883,18 @@
       products = docs.map(doc => {
         const f = doc.fields || {};
         const createdAt = Number(f.createdAt?.integerValue || f.createdAt?.doubleValue || 0);
+        let options = [];
+        try { options = JSON.parse(f.optionsJson?.stringValue || "[]"); } catch { options = []; }
         return {
           id: doc.name.split("/").pop(),
           uploadDate: f.uploadDate?.stringValue || formatDate(createdAt || Date.now()),
           brand: f.brand?.stringValue || "",
           category: f.category?.stringValue || "",
-          colors: f.colors?.stringValue || "",
-          sizes: f.sizes?.stringValue || "",
           name: f.name?.stringValue || "",
+          lfName: f.lfName?.stringValue || "",
           code: f.code?.stringValue || "",
+          options,
+          tags: f.tags?.stringValue || "",
           sourceUrl: f.sourceUrl?.stringValue || "",
           thumbUrl: f.thumbUrl?.stringValue || "",
           detailImgUrl: f.detailImgUrl?.stringValue || "",
@@ -764,15 +918,17 @@
 
   async function saveToFirebase(item) {
     const user = getUserName();
+    const firstCode = item.code || (item.options?.[0]?.code || "");
     const payload = {
       fields: {
         uploadDate: { stringValue: item.uploadDate || formatDate() },
         brand: { stringValue: item.brand || "" },
         category: { stringValue: item.category || "" },
-        colors: { stringValue: item.colors || "" },
-        sizes: { stringValue: item.sizes || "" },
         name: { stringValue: item.name },
-        code: { stringValue: item.code || "" },
+        lfName: { stringValue: item.lfName || "" },
+        code: { stringValue: firstCode },
+        optionsJson: { stringValue: JSON.stringify(item.options || []) },
+        tags: { stringValue: parseTags(item.tags).join("/") },
         sourceUrl: { stringValue: item.sourceUrl || "" },
         thumbUrl: { stringValue: item.thumbUrl || "" },
         detailImgUrl: { stringValue: item.detailImgUrl || "" },
@@ -791,25 +947,27 @@
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload)
     });
-    if (!res.ok) throw new Error("저장 실패 (권한 또는 로그인 확인)");
+    if (!res.ok) throw new Error("저장 실패");
   }
 
   async function updateProductInFirebase(id, item) {
     const fieldKeys = [
-      "uploadDate", "brand", "category", "colors", "sizes",
-      "name", "code", "sourceUrl", "thumbUrl", "detailImgUrl",
-      "discountPrice", "price", "regularPrice", "status", "copy", "updatedBy"
+      "uploadDate", "brand", "category", "name", "lfName", "code", "optionsJson", "tags",
+      "sourceUrl", "thumbUrl", "detailImgUrl", "discountPrice", "price", "regularPrice",
+      "status", "copy", "updatedBy"
     ];
     const masks = fieldKeys.map(f => `updateMask.fieldPaths=${f}`).join("&");
+    const firstCode = item.code || (item.options?.[0]?.code || "");
     const payload = {
       fields: {
         uploadDate: { stringValue: item.uploadDate || formatDate() },
         brand: { stringValue: item.brand || "" },
         category: { stringValue: item.category || "" },
-        colors: { stringValue: item.colors || "" },
-        sizes: { stringValue: item.sizes || "" },
         name: { stringValue: item.name },
-        code: { stringValue: item.code || "" },
+        lfName: { stringValue: item.lfName || "" },
+        code: { stringValue: firstCode },
+        optionsJson: { stringValue: JSON.stringify(item.options || []) },
+        tags: { stringValue: parseTags(item.tags).join("/") },
         sourceUrl: { stringValue: item.sourceUrl || "" },
         thumbUrl: { stringValue: item.thumbUrl || "" },
         detailImgUrl: { stringValue: item.detailImgUrl || "" },
@@ -848,7 +1006,7 @@
     fetchProducts();
   }
 
-  // 7. 쿠팡 V4.6 일괄등록 엑셀 다운로드 (117열 구조)
+  // 7. 쿠팡 V4.6 일괄등록 엑셀 다운로드 (옵션별 품번·재고·태그 반영)
   document.getElementById("btnExportExcel").addEventListener("click", async () => {
     const list = getFilteredProducts();
     if (!list.length) return alert("다운로드할 상품이 없습니다.");
@@ -863,11 +1021,11 @@
       row1[109] = "상품 상세 설명"; row1[110] = "구비서류";
 
       const row2 = new Array(COL_COUNT).fill("");
-      const baseHeaders = ["카테고리", "등록상품명", "판매시작일", "판매종료일", "상품상태", "상태설명", "브랜드", "제조사", "검색어"];
-      baseHeaders.forEach((h, i) => (row2[i] = h));
+      ["카테고리", "등록상품명", "판매시작일", "판매종료일", "상품상태", "상태설명", "브랜드", "제조사", "검색어"]
+        .forEach((h, i) => (row2[i] = h));
       for (let i = 0; i < 6; i++) { row2[9 + i * 2] = `옵션유형${i + 1}`; row2[10 + i * 2] = `옵션값${i + 1}`; }
       for (let i = 0; i < 20; i++) { row2[21 + i * 2] = `옵션유형${i + 1}`; row2[22 + i * 2] = `옵션값${i + 1}`; }
-      const compHeaders = [
+      [
         "판매가격", "판매대행수수료", "할인율기준가", "재고수량", "출고리드타임",
         "인당최대구매수량", "최대구매수량기간(일)", "성인상품(19)", "과세여부", "병행수입여부",
         "해외구매대행", "업체상품코드", "모델번호", "바코드",
@@ -875,11 +1033,11 @@
         "인증∙신고 등 정보유형", "인증∙신고 등 정보값", "인증∙이동통신 사전승낙서 또는 인증대리점 인증서", "인증∙판매점 사전승낙 인증마크 또는 이동통신사 대리점 인증마크",
         "인증∙신고 등 정보유형", "인증∙신고 등 정보값", "인증∙이동통신 사전승낙서 또는 인증대리점 인증서", "인증∙판매점 사전승낙 인증마크 또는 이동통신사 대리점 인증마크",
         "주문 추가메시지"
-      ];
-      compHeaders.forEach((h, i) => (row2[61 + i] = h));
+      ].forEach((h, i) => (row2[61 + i] = h));
       row2[88] = "상품고시정보 카테고리";
       for (let i = 1; i <= 14; i++) row2[88 + i] = `상품고시정보값${i}`;
-      ["대표(옵션)이미지", "대표이미지(직사각형)", "추가이미지", "상태이미지(중고상품)", "중복 이미지", "이미지 퀄리티"].forEach((h, i) => (row2[103 + i] = h));
+      ["대표(옵션)이미지", "대표이미지(직사각형)", "추가이미지", "상태이미지(중고상품)", "중복 이미지", "이미지 퀄리티"]
+        .forEach((h, i) => (row2[103 + i] = h));
       row2[109] = "상세 설명";
       for (let i = 1; i <= 7; i++) row2[109 + i] = `구비서류값${i}`;
 
@@ -891,44 +1049,42 @@
       const aoa = [row1, row2, row3, row4];
 
       list.forEach(p => {
-        const colors = (p.colors || "").split(",").map(s => s.trim()).filter(Boolean);
-        const sizes = (p.sizes || "").split(",").map(s => s.trim()).filter(Boolean);
-        const cList = colors.length ? colors : [""];
-        const sList = sizes.length ? sizes : [""];
         const brandVal = p.brand || (p.name.split(" ")[0] || "자체브랜드");
+        const opts = (p.options && p.options.length)
+          ? p.options
+          : [{ color: "", code: p.code || "", size: "", stock: 999 }];
 
-        cList.forEach(color => {
-          sList.forEach(size => {
-            const r = new Array(COL_COUNT).fill("");
-            r[0] = p.category || "";
-            r[1] = p.name || "";
-            r[2] = p.uploadDate || formatDate();
-            r[3] = "2099-12-31";
-            r[4] = "새상품";
-            r[6] = brandVal;
-            r[7] = brandVal;
-            if (color) { r[9] = "색상"; r[10] = color; }
-            if (size) { r[11] = "사이즈"; r[12] = size; }
-            r[61] = p.price || 0;
-            r[63] = p.regularPrice || p.price || 0;
-            r[64] = 999; // 재고수량
-            r[65] = 2;   // 출고리드타임
-            r[66] = 0;   // 인당최대구매수량
-            r[67] = 1;   // 최대구매수량기간
-            r[68] = "N"; // 성인상품
-            r[69] = "Y"; // 과세여부
-            r[70] = "N"; // 병행수입여부
-            r[71] = "N"; // 해외구매대행
-            r[72] = p.code || "";
-            r[73] = p.code || "";
-            r[74] = "[바코드없음]온라인 판매를 위한 소규모 제작 상품임";
-            r[75] = "인증∙신고 등 대상아님";
-            r[88] = "의류";
-            for (let i = 89; i <= 97; i++) r[i] = "상세페이지 참조";
-            r[103] = p.thumbUrl || "";
-            r[109] = p.detailImgUrl || p.thumbUrl || "";
-            aoa.push(r);
-          });
+        opts.forEach(opt => {
+          const r = new Array(COL_COUNT).fill("");
+          r[0] = p.category || "";
+          r[1] = p.name || "";
+          r[2] = p.uploadDate || formatDate();
+          r[3] = "2099-12-31";
+          r[4] = "새상품";
+          r[6] = brandVal;
+          r[7] = brandVal;
+          r[8] = parseTags(p.tags).join("/");
+          if (opt.color) { r[9] = "색상"; r[10] = opt.color; }
+          if (opt.size) { r[11] = "사이즈"; r[12] = opt.size; }
+          r[61] = p.price || 0;
+          r[63] = p.regularPrice || p.price || 0;
+          r[64] = opt.stock ?? 999;
+          r[65] = 2;
+          r[66] = 0;
+          r[67] = 1;
+          r[68] = "N";
+          r[69] = "Y";
+          r[70] = "N";
+          r[71] = "N";
+          r[72] = opt.code || p.code || "";
+          r[73] = opt.code || p.code || "";
+          r[74] = "[바코드없음]온라인 판매를 위한 소규모 제작 상품임";
+          r[75] = "인증∙신고 등 대상아님";
+          r[88] = "의류";
+          for (let i = 89; i <= 97; i++) r[i] = "상세페이지 참조";
+          r[103] = p.thumbUrl || "";
+          r[109] = p.detailImgUrl || p.thumbUrl || "";
+          aoa.push(r);
         });
       });
 
@@ -946,17 +1102,20 @@
     editingId = p.id;
     document.getElementById("eUploadDate").value = p.uploadDate || formatDate();
     document.getElementById("eBrand").value = p.brand || "";
-    document.getElementById("eCode").value = p.code || "";
     document.getElementById("eName").value = p.name || "";
-    document.getElementById("eCategory").value = p.category || "";
-    document.getElementById("eColors").value = p.colors || "";
-    document.getElementById("eSizes").value = p.sizes || "";
+    document.getElementById("eLfName").value = p.lfName || "";
+    editCatCtrl.setPath(p.category || "");
+    editOptCtrl.setOptions(
+      p.options && p.options.length ? p.options : [{ color: "", code: p.code || "", size: "", stock: 999 }]
+    );
+    document.getElementById("eTags").value = (p.tags || "").replace(/\//g, ", ");
+    updateEditTags();
     document.getElementById("eSourceUrl").value = p.sourceUrl || "";
     document.getElementById("eThumbUrl").value = p.thumbUrl || "";
     document.getElementById("eDetailImgUrl").value = p.detailImgUrl || "";
-    document.getElementById("eDiscountPrice").value = p.discountPrice || 0;
-    document.getElementById("ePrice").value = p.price || 0;
-    document.getElementById("eRegularPrice").value = p.regularPrice || 0;
+    document.getElementById("eDiscountPrice").value = formatComma(p.discountPrice);
+    document.getElementById("ePrice").value = formatComma(p.price);
+    document.getElementById("eRegularPrice").value = formatComma(p.regularPrice);
     document.getElementById("eStatus").value = p.status || "수집완료";
     document.getElementById("eCopy").value = p.copy || "";
     updateEditMargin();
@@ -971,22 +1130,24 @@
   document.getElementById("btnSaveEdit").addEventListener("click", async () => {
     if (!editingId) return;
     const name = document.getElementById("eName").value.trim();
-    if (!name) return alert("상품명을 입력해 주세요.");
+    if (!name) return alert("쿠팡 상품명을 입력해 주세요.");
     try {
+      const options = editOptCtrl.getOptions();
       await updateProductInFirebase(editingId, {
         uploadDate: document.getElementById("eUploadDate").value || formatDate(),
         brand: document.getElementById("eBrand").value.trim(),
-        code: document.getElementById("eCode").value.trim(),
+        category: editCatCtrl.getPath(),
         name,
-        category: document.getElementById("eCategory").value.trim(),
-        colors: document.getElementById("eColors").value.trim(),
-        sizes: document.getElementById("eSizes").value.trim(),
+        lfName: document.getElementById("eLfName").value.trim(),
+        code: options[0]?.code || "",
+        options,
+        tags: document.getElementById("eTags").value,
         sourceUrl: document.getElementById("eSourceUrl").value.trim(),
         thumbUrl: document.getElementById("eThumbUrl").value.trim(),
         detailImgUrl: document.getElementById("eDetailImgUrl").value.trim(),
-        discountPrice: Number(document.getElementById("eDiscountPrice").value) || 0,
-        price: Number(document.getElementById("ePrice").value) || 0,
-        regularPrice: Number(document.getElementById("eRegularPrice").value) || 0,
+        discountPrice: parseNum(document.getElementById("eDiscountPrice").value),
+        price: parseNum(document.getElementById("ePrice").value),
+        regularPrice: parseNum(document.getElementById("eRegularPrice").value),
         status: document.getElementById("eStatus").value,
         copy: document.getElementById("eCopy").value.trim()
       });
@@ -1016,10 +1177,11 @@
         uploadDate: formatDate(),
         brand,
         category: "",
-        colors: "",
-        sizes: "",
         name: fullName,
+        lfName: storageData.title || "",
         code,
+        options: code ? [{ color: "", code, size: "", stock: 999 }] : [],
+        tags: "",
         sourceUrl: storageData.url || "",
         thumbUrl: firstImg,
         detailImgUrl: "",
@@ -1039,28 +1201,33 @@
   // 10. 수동 등록
   document.getElementById("btnAddManual").addEventListener("click", async () => {
     const name = document.getElementById("mName").value.trim();
-    if (!name) return alert("상품명을 입력해 주세요.");
+    if (!name) return alert("쿠팡 상품명을 입력해 주세요.");
     try {
+      const options = addOptCtrl.getOptions();
       await saveToFirebase({
         uploadDate: document.getElementById("mUploadDate").value || formatDate(),
         brand: document.getElementById("mBrand").value.trim(),
-        category: document.getElementById("mCategory").value.trim(),
-        colors: document.getElementById("mColors").value.trim(),
-        sizes: document.getElementById("mSizes").value.trim(),
+        category: addCatCtrl.getPath(),
         name,
-        code: document.getElementById("mCode").value.trim(),
+        lfName: document.getElementById("mLfName").value.trim(),
+        code: options[0]?.code || "",
+        options,
+        tags: document.getElementById("mTags").value,
         sourceUrl: document.getElementById("mSourceUrl").value.trim(),
         thumbUrl: document.getElementById("mThumbUrl").value.trim(),
         detailImgUrl: document.getElementById("mDetailImgUrl").value.trim(),
-        discountPrice: Number(document.getElementById("mDiscountPrice").value) || 0,
-        price: Number(document.getElementById("mPrice").value) || 0,
-        regularPrice: Number(document.getElementById("mRegularPrice").value) || 0,
+        discountPrice: parseNum(document.getElementById("mDiscountPrice").value),
+        price: parseNum(document.getElementById("mPrice").value),
+        regularPrice: parseNum(document.getElementById("mRegularPrice").value),
         status: document.getElementById("mStatus").value,
         copy: document.getElementById("mCopy").value.trim()
       });
-      ["mBrand", "mName", "mCategory", "mColors", "mSizes", "mCode", "mSourceUrl", "mThumbUrl", "mDetailImgUrl", "mDiscountPrice", "mPrice", "mRegularPrice", "mCopy"]
+      ["mBrand", "mName", "mLfName", "mTags", "mSourceUrl", "mThumbUrl", "mDetailImgUrl", "mDiscountPrice", "mPrice", "mRegularPrice", "mCopy"]
         .forEach(id => (document.getElementById(id).value = ""));
       document.getElementById("mUploadDate").value = formatDate();
+      addCatCtrl.setPath("");
+      addOptCtrl.setOptions([]);
+      updateAddTags();
       updateAddMargin();
       alert("✅ 상품이 등록되었습니다!");
       switchView("list");
@@ -1089,26 +1256,30 @@
 
     filtered.forEach((p, idx) => {
       const tr = document.createElement("tr");
-      const { profit, rate } = calcMargin(p.discountPrice, p.price);
+      const { profitAfterVat, rateAfterVat } = calcMargin(p.discountPrice, p.price);
       const marginBadge = p.price > 0
-        ? `<div class="cp-margin-badge ${profit >= 0 ? "pos" : "neg"}">${rate.toFixed(1)}% (${formatWon(profit)})</div>`
+        ? `<div class="cp-margin-badge ${profitAfterVat >= 0 ? "pos" : "neg"}">세후 ${rateAfterVat.toFixed(1)}% (${formatWon(profitAfterVat)})</div>`
         : "";
       const workerInfo = [
         p.author ? `등록: ${p.author}` : "",
         p.updatedBy ? `수정: ${p.updatedBy}` : ""
       ].filter(Boolean).join(" · ");
 
+      const uniqueCodes = [...new Set((p.options || []).map(o => o.code).filter(Boolean))];
+      const displayCode = uniqueCodes.length ? uniqueCodes.join(", ") : (p.code || "-");
+
       tr.innerHTML = `
         <td class="cp-num-col">${idx + 1}</td>
         <td style="white-space:nowrap;color:#475569;">${p.uploadDate}</td>
         <td>
           <div style="font-weight:700;word-break:break-word;color:#0f172a;">${p.name}</div>
+          ${p.lfName ? `<div class="cp-lf-sub">LF: ${p.lfName}</div>` : ""}
           ${workerInfo ? `<div class="cp-worker-tag">${workerInfo}</div>` : ""}
         </td>
         <td>
           ${p.sourceUrl ? `<a href="${p.sourceUrl}" target="_blank" class="cp-link-btn">링크 ↗</a>` : `<span style="color:#94a3b8;">-</span>`}
         </td>
-        <td style="font-family:monospace;color:#334155;">${p.code || "-"}</td>
+        <td style="font-family:monospace;font-size:12px;color:#334155;word-break:break-all;">${displayCode}</td>
         <td class="cp-price-col">${formatWon(p.discountPrice)}</td>
         <td class="cp-price-col">
           <div style="font-weight:700;color:#003cb3;">${formatWon(p.price)}</div>
