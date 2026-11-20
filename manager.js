@@ -164,19 +164,109 @@
     });
   }
 
-  // 제작실 본체나 썸네일/상세페이지 제작 카드는 건드리지 않고 하단 바 및 숏패딩 프리셋만 숨김
+  function setNativeInputValue(input, val) {
+    if (!input || val === undefined || val === null) return;
+    const str = String(val).trim();
+    if (!str) return;
+    const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, "value")?.set;
+    if (setter) setter.call(input, str);
+    else input.value = str;
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+    input.dispatchEvent(new Event("change", { bubbles: true }));
+  }
+
   function cleanUnwantedUI() {
-    document.querySelectorAll("div, footer, nav, section, aside, label, h2, h3, h4").forEach(el => {
+    document.querySelectorAll("div, footer, nav, section, aside, label, h2, h3, h4, p, button, select").forEach(el => {
       if (el.id?.startsWith("cp") || el.closest("#cpTopBar, #cpSidebar, #cpEditModal, #cpLoginOverlay, #cpStudioRegSection")) return;
       if (el.querySelector("#lfReceived, #btnMakeAll, .cp-card")) return;
+
       const txt = (el.innerText || "").replace(/\s+/g, " ").trim();
       if (txt === "상세페이지 제작" && el.children.length <= 2) {
         el.style.setProperty("display", "none", "important");
       }
-      if (/남성\s*숏패딩\s*기본\s*사이즈표/.test(txt) && txt.length < 80) {
+
+      if (el.children.length === 0 && /남성\s*숏패딩\s*기본\s*사이즈표/.test(txt)) {
+        el.textContent = txt.replace(/남성\s*숏패딩\s*기본\s*사이즈표/g, "상세페이지 사이즈표");
+      }
+
+      if (el.tagName === "SELECT") {
+        const optsText = [...el.options].map(o => (o.textContent || "").trim()).join(" ");
+        if (/남성.*여성|숏패딩.*롱패딩|니트.*셔츠/.test(optsText) && optsText.length < 120) {
+          el.style.setProperty("display", "none", "important");
+        }
+      }
+      if (el.tagName === "BUTTON" && /선택한\s*기본표\s*적용/.test(txt)) {
+        el.style.setProperty("display", "none", "important");
+      }
+      if (/기본값은\s*수정할\s*수\s*있으며\s*실제\s*상품\s*실측표/.test(txt) && txt.length < 140) {
         el.style.setProperty("display", "none", "important");
       }
     });
+  }
+
+  function applyMeasuredSizesToStudio(measuredSizes) {
+    cleanUnwantedUI();
+    if (!measuredSizes?.rows?.length) return;
+
+    const addRowBtn = [...document.querySelectorAll("button")].find(b =>
+      !b.id?.startsWith("cp") && /사이즈\s*한\s*줄\s*추가/.test((b.innerText || "").trim())
+    );
+    const sizeBox = addRowBtn?.parentElement;
+    if (!sizeBox) return;
+
+    const rows = measuredSizes.rows;
+    const rowInputs = [...sizeBox.querySelectorAll("input")];
+    const firstRow = [...sizeBox.querySelectorAll("tr, [class*='row'], [class*='Row']")].find(r =>
+      r.querySelectorAll("input").length >= 4
+    );
+    const colsPerRow = firstRow ? firstRow.querySelectorAll("input").length : 5;
+
+    let currentRows = [...sizeBox.querySelectorAll("tr, [class*='row'], [class*='Row']")].filter(r =>
+      r.querySelectorAll("input").length >= 4
+    );
+
+    if (!currentRows.length && rowInputs.length >= colsPerRow) {
+      for (let i = 0; i + colsPerRow <= rowInputs.length; i += colsPerRow) {
+        currentRows.push({ querySelectorAll: () => rowInputs.slice(i, i + colsPerRow) });
+      }
+    }
+
+    while (currentRows.length < rows.length && addRowBtn) {
+      addRowBtn.click();
+      currentRows = [...sizeBox.querySelectorAll("tr, [class*='row'], [class*='Row']")].filter(r =>
+        r.querySelectorAll("input").length >= 4
+      );
+    }
+
+    rows.forEach((r, idx) => {
+      const targetRow = currentRows[idx];
+      if (!targetRow) return;
+      const inputs = [...targetRow.querySelectorAll("input")];
+      const vals = [r.size, r.totalLength, r.shoulder, r.chest, r.sleeve];
+      inputs.forEach((inp, cIdx) => {
+        if (vals[cIdx] !== undefined && vals[cIdx] !== "") {
+          setNativeInputValue(inp, vals[cIdx]);
+        }
+      });
+    });
+  }
+
+  function applyFabricMaterialToStudio(materialText) {
+    if (!materialText) return;
+    const labels = [...document.querySelectorAll("label, span, div, p")].filter(el =>
+      !el.id?.startsWith("cp") &&
+      !el.closest("#cpStudioRegSection, #cpEditModal") &&
+      el.children.length <= 2 &&
+      /확인한\s*소재\s*및\s*혼용률/.test((el.innerText || "").trim())
+    );
+    for (const lbl of labels) {
+      const container = lbl.closest("div") || lbl.parentElement;
+      const inp = container?.querySelector("input, textarea") || lbl.nextElementSibling?.querySelector?.("input, textarea");
+      if (inp) {
+        setNativeInputValue(inp, materialText);
+        break;
+      }
+    }
   }
 
   const style = document.createElement("style");
@@ -826,16 +916,6 @@
   const studioMarginCtrl = bindMarginCalc("s", true);
   const editMarginCtrl = bindMarginCalc("e", false);
 
-  function applyMeasuredSizesToStudio(measuredSizes) {
-    if (!measuredSizes?.rows?.length) return;
-    const textareas = [...document.querySelectorAll("textarea")].filter(t => !t.id?.startsWith("cp") && !t.id?.match(/^[se](Copy|Tags)/));
-    const sizeArea = textareas.find(t => /사이즈|실측|치수/.test((t.placeholder || "") + (t.getAttribute("aria-label") || "")));
-    if (sizeArea && !sizeArea.value.trim()) {
-      sizeArea.value = measuredSizes.summaryText;
-      sizeArea.dispatchEvent(new Event("input", { bubbles: true }));
-    }
-  }
-
   async function readStudioAndExtensionData() {
     const brand = document.querySelector('input[placeholder="닥스"]')?.value.trim() || "";
     const code = document.querySelector('input[placeholder="DMSW6D301BK"]')?.value.trim() || "";
@@ -880,6 +960,7 @@
   }
 
   async function syncFromStudioPanel(showToast = true, overwrite = false) {
+    cleanUnwantedUI();
     const d = await readStudioAndExtensionData();
     if (d.brand && (overwrite || !document.getElementById("sBrand").value)) {
       document.getElementById("sBrand").value = d.brand;
@@ -916,8 +997,11 @@
     if (d.measuredSizes?.rows?.length) {
       applyMeasuredSizesToStudio(d.measuredSizes);
     }
+    if (d.notice?.material) {
+      applyFabricMaterialToStudio(d.notice.material);
+    }
     studioMarginCtrl.update();
-    if (showToast) alert("📥 확장프로그램 수집값(옵션·고시정보·가격·실측사이즈·상품명·이미지)을 반영했습니다!");
+    if (showToast) alert("📥 확장프로그램 수집값(옵션·고시정보·가격·실측사이즈·소재·상품명·이미지)을 반영했습니다!");
   }
 
   document.getElementById("btnSyncFromStudio").addEventListener("click", () => syncFromStudioPanel(true, true));
