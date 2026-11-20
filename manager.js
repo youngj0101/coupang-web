@@ -164,20 +164,17 @@
     });
   }
 
+  // 제작실 본체나 썸네일/상세페이지 제작 카드는 건드리지 않고 하단 바 및 숏패딩 프리셋만 숨김
   function cleanUnwantedUI() {
     document.querySelectorAll("div, footer, nav, section, aside, label, h2, h3, h4").forEach(el => {
       if (el.id?.startsWith("cp") || el.closest("#cpTopBar, #cpSidebar, #cpEditModal, #cpLoginOverlay, #cpStudioRegSection")) return;
+      if (el.querySelector("#lfReceived, #btnMakeAll, .cp-card")) return;
       const txt = (el.innerText || "").replace(/\s+/g, " ").trim();
-      if (txt === "상세페이지 제작" && el.children.length <= 3) {
+      if (txt === "상세페이지 제작" && el.children.length <= 2) {
         el.style.setProperty("display", "none", "important");
       }
-      if (/남성\s*숏패딩\s*기본\s*사이즈표/.test(txt)) {
-        const box = el.closest("section, article, form") || el.parentElement;
-        if (box && box.tagName !== "MAIN" && box.id !== "cpContent") {
-          box.style.setProperty("display", "none", "important");
-        } else {
-          el.style.setProperty("display", "none", "important");
-        }
+      if (/남성\s*숏패딩\s*기본\s*사이즈표/.test(txt) && txt.length < 80) {
+        el.style.setProperty("display", "none", "important");
       }
     });
   }
@@ -255,6 +252,7 @@
     #cpContent > main {
       width: 100% !important; max-width: 920px !important;
       margin: 0 auto 20px !important; padding: 0 !important;
+      display: block !important; visibility: visible !important; opacity: 1 !important;
     }
     #cpContent > main > * {
       max-width: 100% !important; margin-left: auto !important; margin-right: auto !important;
