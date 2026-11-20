@@ -12,7 +12,6 @@
   const DEFAULT_FEE_RATE = 11.55;
   const DEFAULT_SHIPPING = 0;
 
-  // 2단계 세부 카테고리 트리 (남성 의류)
   const CATEGORY_TREE = {
     "가디건": ["남성 기본(허리길이)가디건", "남성 롱 가디건"],
     "골프의류": [
@@ -45,6 +44,18 @@
     "티셔츠": ["남성 긴소매", "남성 민소매/나시", "남성 반소매"],
     "패션 트레이닝복": ["남성 상의", "남성 상하의 세트", "남성 하의"]
   };
+
+  const NOTICE_FIELDS = [
+    ["material", "제품 소재"],
+    ["color", "색상"],
+    ["size", "치수"],
+    ["manufacturer", "제조자(수입자)"],
+    ["country", "제조국"],
+    ["care", "세탁방법 및 취급시 주의사항"],
+    ["mfgDate", "제조연월"],
+    ["warranty", "품질보증기준"],
+    ["asInfo", "A/S 책임자와 전화번호"]
+  ];
 
   let products = [];
   let editingId = null;
@@ -113,7 +124,6 @@
     return { main: "", sub: "" };
   }
 
-  // 마진율 계산 (부가세 차감 순수익 포함)
   function calcMargin(cost, salePrice, feeRate = DEFAULT_FEE_RATE, shipping = DEFAULT_SHIPPING) {
     const c = parseNum(cost);
     const s = parseNum(salePrice);
@@ -122,14 +132,12 @@
     const fee = Math.round(s * (f / 100));
     const profit = s - c - fee - sh;
     const rate = s > 0 ? (profit / s) * 100 : 0;
-    // 일반과세자 예상 부가세: (매출 - 매입/수수료/배송비) / 11
     const vat = profit > 0 ? Math.round(profit / 11) : 0;
     const profitAfterVat = profit - vat;
     const rateAfterVat = s > 0 ? (profitAfterVat / s) * 100 : 0;
     return { fee, profit, rate, vat, profitAfterVat, rateAfterVat };
   }
 
-  // 1,000원 단위 반올림 판매가 계산
   function calcTargetSalePrice(cost, targetMarginPct, feeRate = DEFAULT_FEE_RATE, shipping = DEFAULT_SHIPPING) {
     const denom = 1 - (Number(feeRate) / 100) - (Number(targetMarginPct) / 100);
     if (denom <= 0) return 0;
@@ -148,7 +156,7 @@
     });
   }
 
-  // 1. 스타일 추가 (폼 컴팩트하게 조정)
+  // 1. 스타일 추가
   const style = document.createElement("style");
   style.textContent = `
     body { margin: 0 !important; background: #f4f6fa !important; }
@@ -216,7 +224,6 @@
       background: #fff; border: 1px solid #e2e8f0; border-radius: 12px;
       padding: 22px; margin-bottom: 18px; box-shadow: 0 1px 3px rgba(0,0,0,0.03);
     }
-    /* 등록 폼 가로 폭 컴팩트하게 제한 */
     .cp-form-card { max-width: 820px; margin: 0 auto; }
     .cp-card-head {
       display: flex; justify-content: space-between; align-items: center;
@@ -224,9 +231,8 @@
     }
     .cp-grid-2 { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; margin-bottom: 10px; }
     .cp-grid-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-bottom: 10px; }
-    .cp-grid-4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 10px; }
     @media (max-width: 760px) {
-      .cp-grid-2, .cp-grid-3, .cp-grid-4 { grid-template-columns: 1fr; }
+      .cp-grid-2, .cp-grid-3 { grid-template-columns: 1fr; }
     }
     .cp-form-card label, .cp-modal-box label {
       font-size: 12.5px; font-weight: 700; color: #475569; margin-bottom: 8px; display: block;
@@ -241,14 +247,11 @@
     .cp-toolbar input { max-width: 240px; }
     .cp-toolbar select { max-width: 170px; }
 
-    /* 옵션 테이블 */
     .cp-opt-box {
       background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 10px;
       padding: 12px 14px; margin: 10px 0 14px;
     }
-    .cp-opt-head {
-      display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;
-    }
+    .cp-opt-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
     .cp-opt-head span { font-size: 13px; font-weight: 700; color: #0f172a; }
     .cp-opt-add-btn {
       background: #0f172a !important; color: #fff !important; border: none !important;
@@ -265,7 +268,18 @@
       cursor: pointer; margin: 0 !important;
     }
 
-    /* 마진율 계산기 박스 */
+    .cp-notice-details {
+      background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 10px;
+      padding: 10px 14px; margin: 10px 0 14px;
+    }
+    .cp-notice-details summary {
+      font-size: 13px; font-weight: 700; color: #0f172a; cursor: pointer; user-select: none;
+    }
+    .cp-notice-grid {
+      display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px 12px; margin-top: 12px;
+    }
+    @media (max-width: 760px) { .cp-notice-grid { grid-template-columns: 1fr; } }
+
     .cp-margin-box {
       background: #f0f9ff; border: 1px solid #bae6fd; border-radius: 10px;
       padding: 14px 16px; margin: 10px 0 14px;
@@ -437,6 +451,10 @@
   function buildFormHTML(p) {
     const mainOpts = Object.keys(CATEGORY_TREE)
       .map(k => `<option value="${k}">${k}</option>`).join("");
+    const noticeInputs = NOTICE_FIELDS.map(([key, label]) =>
+      `<label>${label}<input id="${p}Notice_${key}" type="text" placeholder="비워두면 '상세페이지 참조'로 자동 입력"></label>`
+    ).join("");
+
     return `
       <div class="cp-grid-3">
         <label>업로드 날짜<input id="${p}UploadDate" type="date" value="${formatDate()}"></label>
@@ -469,7 +487,6 @@
         </label>
       </div>
 
-      <!-- 색상별 품번 / 사이즈별 재고 옵션 테이블 -->
       <div class="cp-opt-box">
         <div class="cp-opt-head">
           <span>🎨 옵션 관리 (색상별 품번 · 사이즈별 재고)</span>
@@ -507,7 +524,6 @@
         <label>정가 (할인율기준가/원)<input id="${p}RegularPrice" class="cp-money-input" type="text" inputmode="numeric" placeholder="예: 129,000"></label>
       </div>
 
-      <!-- 마진율 자동계산기 -->
       <div class="cp-margin-box">
         <div class="cp-margin-title">🧮 마진율 자동계산기 (수수료 11.55% · 무료배송 0원 · 1,000원 단위 반올림)</div>
         <div class="cp-margin-row">
@@ -517,12 +533,17 @@
           <button type="button" id="${p}BtnCalcPrice" class="cp-calc-btn">판매가 자동 계산</button>
         </div>
         <div id="${p}MarginResult" class="cp-margin-result">
-          <span>수수료: 0원</span>
+          <span>쿠팡 수수료: 0원</span>
           <span>예상 부가세: 0원</span>
           <span>예상 순수익: 0원 (0.0%)</span>
           <span>부가세 포함 순수익: 0원 (0.0%)</span>
         </div>
       </div>
+
+      <details class="cp-notice-details">
+        <summary>📋 상품정보제공고시 (의류 9개 항목 · 클릭해서 펼치기)</summary>
+        <div class="cp-notice-grid">${noticeInputs}</div>
+      </details>
 
       <label>상세페이지 문구 / 메모
         <textarea id="${p}Copy" rows="3" placeholder="CHECK POINT 문구나 메모를 입력하세요"></textarea>
@@ -580,12 +601,28 @@
   document.body.appendChild(editModal);
   document.body.appendChild(loginOverlay);
 
-  // 금액 입력창 자동 콤마 적용
+  // 금액 콤마 자동 적용
   document.addEventListener("input", e => {
     if (e.target.classList.contains("cp-money-input")) {
       e.target.value = formatComma(e.target.value);
     }
   });
+
+  // 고시정보 헬퍼
+  function getNoticeFromForm(p) {
+    const obj = {};
+    NOTICE_FIELDS.forEach(([k]) => {
+      obj[k] = document.getElementById(`${p}Notice_${k}`)?.value.trim() || "";
+    });
+    return obj;
+  }
+
+  function setNoticeToForm(p, notice = {}) {
+    NOTICE_FIELDS.forEach(([k]) => {
+      const el = document.getElementById(`${p}Notice_${k}`);
+      if (el) el.value = notice?.[k] || "";
+    });
+  }
 
   // 2단계 카테고리 연동
   function setupCategorySelects(p) {
@@ -614,7 +651,7 @@
   const addCatCtrl = setupCategorySelects("m");
   const editCatCtrl = setupCategorySelects("e");
 
-  // 옵션 테이블 관리 (색상 / 색상별 품번 / 사이즈 / 재고)
+  // 옵션 테이블 관리
   function setupOptionTable(p) {
     const tbody = document.getElementById(`${p}OptBody`);
     function addRow(opt = { color: "", code: "", size: "", stock: 999 }) {
@@ -633,11 +670,13 @@
       tbody.appendChild(tr);
     }
     document.getElementById(`${p}BtnAddOpt`).addEventListener("click", () => {
-      // 직전 행의 색상/품번을 복사해 편의성 향상
       const last = tbody.lastElementChild;
-      const lastColor = last?.querySelector(".opt-color")?.value || "";
-      const lastCode = last?.querySelector(".opt-code")?.value || "";
-      addRow({ color: lastColor, code: lastCode, size: "", stock: 999 });
+      addRow({
+        color: last?.querySelector(".opt-color")?.value || "",
+        code: last?.querySelector(".opt-code")?.value || "",
+        size: "",
+        stock: 999
+      });
     });
     addRow();
     return {
@@ -660,7 +699,7 @@
   const addOptCtrl = setupOptionTable("m");
   const editOptCtrl = setupOptionTable("e");
 
-  // 태그 20개 카운터
+  // 태그 카운터
   function setupTagCounter(p) {
     const input = document.getElementById(`${p}Tags`);
     const badge = document.getElementById(`${p}TagCount`);
@@ -676,7 +715,7 @@
   const updateAddTags = setupTagCounter("m");
   const updateEditTags = setupTagCounter("e");
 
-  // 마진율 계산기 바인딩 (부가세 포함 순수익 + 1,000원 단위 반올림)
+  // 마진율 계산기
   function bindMarginCalc(p) {
     const costEl = document.getElementById(`${p}DiscountPrice`);
     const priceEl = document.getElementById(`${p}Price`);
@@ -884,7 +923,9 @@
         const f = doc.fields || {};
         const createdAt = Number(f.createdAt?.integerValue || f.createdAt?.doubleValue || 0);
         let options = [];
+        let notice = {};
         try { options = JSON.parse(f.optionsJson?.stringValue || "[]"); } catch { options = []; }
+        try { notice = JSON.parse(f.noticeJson?.stringValue || "{}"); } catch { notice = {}; }
         return {
           id: doc.name.split("/").pop(),
           uploadDate: f.uploadDate?.stringValue || formatDate(createdAt || Date.now()),
@@ -894,6 +935,7 @@
           lfName: f.lfName?.stringValue || "",
           code: f.code?.stringValue || "",
           options,
+          notice,
           tags: f.tags?.stringValue || "",
           sourceUrl: f.sourceUrl?.stringValue || "",
           thumbUrl: f.thumbUrl?.stringValue || "",
@@ -928,6 +970,7 @@
         lfName: { stringValue: item.lfName || "" },
         code: { stringValue: firstCode },
         optionsJson: { stringValue: JSON.stringify(item.options || []) },
+        noticeJson: { stringValue: JSON.stringify(item.notice || {}) },
         tags: { stringValue: parseTags(item.tags).join("/") },
         sourceUrl: { stringValue: item.sourceUrl || "" },
         thumbUrl: { stringValue: item.thumbUrl || "" },
@@ -952,7 +995,7 @@
 
   async function updateProductInFirebase(id, item) {
     const fieldKeys = [
-      "uploadDate", "brand", "category", "name", "lfName", "code", "optionsJson", "tags",
+      "uploadDate", "brand", "category", "name", "lfName", "code", "optionsJson", "noticeJson", "tags",
       "sourceUrl", "thumbUrl", "detailImgUrl", "discountPrice", "price", "regularPrice",
       "status", "copy", "updatedBy"
     ];
@@ -967,6 +1010,7 @@
         lfName: { stringValue: item.lfName || "" },
         code: { stringValue: firstCode },
         optionsJson: { stringValue: JSON.stringify(item.options || []) },
+        noticeJson: { stringValue: JSON.stringify(item.notice || {}) },
         tags: { stringValue: parseTags(item.tags).join("/") },
         sourceUrl: { stringValue: item.sourceUrl || "" },
         thumbUrl: { stringValue: item.thumbUrl || "" },
@@ -1006,7 +1050,7 @@
     fetchProducts();
   }
 
-  // 7. 쿠팡 V4.6 일괄등록 엑셀 다운로드 (옵션별 품번·재고·태그 반영)
+  // 7. 쿠팡 V4.6 일괄등록 엑셀 다운로드 (고시정보 CL~CT열 자동 기입 포함)
   document.getElementById("btnExportExcel").addEventListener("click", async () => {
     const list = getFilteredProducts();
     if (!list.length) return alert("다운로드할 상품이 없습니다.");
@@ -1053,6 +1097,7 @@
         const opts = (p.options && p.options.length)
           ? p.options
           : [{ color: "", code: p.code || "", size: "", stock: 999 }];
+        const n = p.notice || {};
 
         opts.forEach(opt => {
           const r = new Array(COL_COUNT).fill("");
@@ -1080,8 +1125,19 @@
           r[73] = opt.code || p.code || "";
           r[74] = "[바코드없음]온라인 판매를 위한 소규모 제작 상품임";
           r[75] = "인증∙신고 등 대상아님";
+
+          // 의류 고시정보 (CL~CT열) 자동 기입
           r[88] = "의류";
-          for (let i = 89; i <= 97; i++) r[i] = "상세페이지 참조";
+          r[89] = n.material || "상세페이지 참조";
+          r[90] = n.color || opt.color || "상세페이지 참조";
+          r[91] = n.size || opt.size || "상세페이지 참조";
+          r[92] = n.manufacturer || brandVal || "상세페이지 참조";
+          r[93] = n.country || "상세페이지 참조";
+          r[94] = n.care || "상세페이지 참조";
+          r[95] = n.mfgDate || "상세페이지 참조";
+          r[96] = n.warranty || "상세페이지 참조";
+          r[97] = n.asInfo || "상세페이지 참조";
+
           r[103] = p.thumbUrl || "";
           r[109] = p.detailImgUrl || p.thumbUrl || "";
           aoa.push(r);
@@ -1108,6 +1164,7 @@
     editOptCtrl.setOptions(
       p.options && p.options.length ? p.options : [{ color: "", code: p.code || "", size: "", stock: 999 }]
     );
+    setNoticeToForm("e", p.notice || {});
     document.getElementById("eTags").value = (p.tags || "").replace(/\//g, ", ");
     updateEditTags();
     document.getElementById("eSourceUrl").value = p.sourceUrl || "";
@@ -1141,6 +1198,7 @@
         lfName: document.getElementById("eLfName").value.trim(),
         code: options[0]?.code || "",
         options,
+        notice: getNoticeFromForm("e"),
         tags: document.getElementById("eTags").value,
         sourceUrl: document.getElementById("eSourceUrl").value.trim(),
         thumbUrl: document.getElementById("eThumbUrl").value.trim(),
@@ -1159,7 +1217,7 @@
     }
   });
 
-  // 9. 제작실 -> 바로 저장
+  // 9. 제작실 -> 바로 저장 (LF몰 옵션·고시정보 자동 반영)
   document.getElementById("btnQuickSave").addEventListener("click", async () => {
     const brand = document.querySelector('input[placeholder="닥스"]')?.value.trim() || "";
     const code = document.querySelector('input[placeholder="DMSW6D301BK"]')?.value.trim() || "";
@@ -1171,6 +1229,9 @@
       ? await new Promise(r => chrome.storage.local.get("lfMakerData", o => r(o.lfMakerData || {})))
       : {};
     const fullName = [brand, kind, code].filter(Boolean).join(" ") || storageData.title || "이름 없는 상품";
+    const collectedOptions = (Array.isArray(storageData.options) && storageData.options.length)
+      ? storageData.options
+      : (code ? [{ color: "", code, size: "", stock: 999 }] : []);
 
     try {
       await saveToFirebase({
@@ -1179,8 +1240,9 @@
         category: "",
         name: fullName,
         lfName: storageData.title || "",
-        code,
-        options: code ? [{ color: "", code, size: "", stock: 999 }] : [],
+        code: collectedOptions[0]?.code || code,
+        options: collectedOptions,
+        notice: storageData.notice || {},
         tags: "",
         sourceUrl: storageData.url || "",
         thumbUrl: firstImg,
@@ -1191,7 +1253,9 @@
         status: "상세페이지 제작중",
         copy
       });
-      alert(`✅ [${fullName}] 상품이 저장되었습니다!`);
+      const optCnt = collectedOptions.length;
+      const noticeCnt = Object.values(storageData.notice || {}).filter(Boolean).length;
+      alert(`✅ [${fullName}] 저장 완료!\n(옵션 ${optCnt}개 · 고시정보 ${noticeCnt}개 자동 반영)`);
       if (!listView.hidden) fetchProducts();
     } catch (e) {
       alert("저장 중 오류: " + e.message);
@@ -1212,6 +1276,7 @@
         lfName: document.getElementById("mLfName").value.trim(),
         code: options[0]?.code || "",
         options,
+        notice: getNoticeFromForm("m"),
         tags: document.getElementById("mTags").value,
         sourceUrl: document.getElementById("mSourceUrl").value.trim(),
         thumbUrl: document.getElementById("mThumbUrl").value.trim(),
@@ -1227,6 +1292,7 @@
       document.getElementById("mUploadDate").value = formatDate();
       addCatCtrl.setPath("");
       addOptCtrl.setOptions([]);
+      setNoticeToForm("m", {});
       updateAddTags();
       updateAddMargin();
       alert("✅ 상품이 등록되었습니다!");
