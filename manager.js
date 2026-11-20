@@ -1,4 +1,6 @@
 (() => {
+  if (window.__CP_MANAGER_LOADED__) return;
+  window.__CP_MANAGER_LOADED__ = true;
   const PROJECT_ID = "coupang-auto-9f7f0";
   const API_KEY = "AIzaSyDaySX9tYRXdftu7TGEdb5kG-nv44OqS90";
   const BASE_URL = `https://firestore.googleapis.com/v1/projects/${PROJECT_ID}/databases/(default)/documents/products`;
