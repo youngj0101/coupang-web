@@ -1,0 +1,284 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>쿠팡 상품 자동화 관리실</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard/dist/web/static/pretendard.css" />
+
+  <script>
+    window.COUPANG_CONFIG = {
+      firebase: {
+        apiKey: "AIzaSyDaySX9tYRXdftu7TGEdb5kG-nv44OqS90",
+        authDomain: "coupang-auto-9f7f0.firebaseapp.com",
+        projectId: "coupang-auto-9f7f0",
+        storageBucket: "coupang-auto-9f7f0.firebasestorage.app",
+        messagingSenderId: "506029929222",
+        appId: "1:506029929222:web:35434da1de88f74fa6e487"
+      }
+    };
+  </script>
+
+  <!-- Firebase 연동용 스크립트 -->
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Pretendard', sans-serif; }
+    body { background: #f4f6f9; color: #222; padding: 24px; }
+    .container { max-width: 1100px; margin: 0 auto; }
+
+    /* 상단 헤더 */
+    header {
+      display: flex; justify-content: space-between; align-items: center;
+      background: #fff; padding: 20px 24px; border-radius: 12px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.05); margin-bottom: 20px;
+    }
+    header h1 { font-size: 20px; font-weight: 700; }
+    .mode-badge {
+      font-size: 13px; font-weight: 600; padding: 6px 12px; border-radius: 20px;
+    }
+    .mode-local { background: #fff3cd; color: #856404; }
+    .mode-cloud { background: #d4edda; color: #155724; }
+
+    /* 입력 카드 */
+    .card {
+      background: #fff; padding: 24px; border-radius: 12px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.05); margin-bottom: 20px;
+    }
+    .card h2 { font-size: 16px; margin-bottom: 16px; color: #333; }
+    .form-grid {
+      display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 12px; margin-bottom: 12px;
+    }
+    label { display: block; font-size: 12px; font-weight: 600; color: #555; margin-bottom: 4px; }
+    input, select, textarea {
+      width: 100%; padding: 10px 12px; border: 1px solid #ddd; border-radius: 8px;
+      font-size: 14px; outline: none;
+    }
+    input:focus, select:focus, textarea:focus { border-color: #2563eb; }
+    textarea { resize: vertical; min-height: 70px; }
+
+    .btn-row { display: flex; gap: 10px; margin-top: 12px; }
+    button {
+      padding: 10px 18px; border: none; border-radius: 8px; font-size: 14px;
+      font-weight: 600; cursor: pointer; transition: 0.15s;
+    }
+    .btn-primary { background: #2563eb; color: #fff; }
+    .btn-primary:hover { background: #1d4ed8; }
+    .btn-danger { background: #ef4444; color: #fff; padding: 6px 10px; font-size: 12px; }
+    .btn-danger:hover { background: #dc2626; }
+
+    /* 필터 및 테이블 */
+    .toolbar { display: flex; gap: 10px; margin-bottom: 16px; flex-wrap: wrap; }
+    .toolbar input { max-width: 280px; }
+    .toolbar select { max-width: 180px; }
+
+    table { width: 100%; border-collapse: collapse; font-size: 14px; }
+    th, td { padding: 12px 10px; text-align: left; border-bottom: 1px solid #eee; vertical-align: middle; }
+    th { background: #f8fafc; color: #555; font-weight: 600; }
+    .thumb { width: 52px; height: 52px; object-fit: cover; border-radius: 6px; background: #eee; }
+    .status-select { padding: 5px 8px; font-size: 13px; border-radius: 6px; width: auto; }
+    .empty-msg { text-align: center; padding: 40px; color: #888; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <h1>📦 쿠팡 상품 자동화 관리실</h1>
+      <span id="modeBadge" class="mode-badge mode-local">로컬 테스트 모드</span>
+    </header>
+
+    <!-- 상품 등록 폼 -->
+    <section class="card">
+      <h2>새 상품 등록</h2>
+      <div class="form-grid">
+        <div>
+          <label>상품명 (쿠팡 노출용)</label>
+          <input id="pName" type="text" placeholder="예: [당일발송] 제주 고당도 타이벡 감귤 5kg" />
+        </div>
+        <div>
+          <label>판매가 (원)</label>
+          <input id="pPrice" type="number" placeholder="예: 19900" />
+        </div>
+        <div>
+          <label>소싱처 URL</label>
+          <input id="pSourceUrl" type="url" placeholder="https://..." />
+        </div>
+        <div>
+          <label>썸네일 이미지 URL</label>
+          <input id="pThumbUrl" type="url" placeholder="https://... (비워도 됨)" />
+        </div>
+        <div>
+          <label>진행 상태</label>
+          <select id="pStatus">
+            <option value="수집완료">1. 수집완료</option>
+            <option value="상세페이지 제작중">2. 상세페이지 제작중</option>
+            <option value="업로드 완료">3. 쿠팡 업로드 완료</option>
+          </select>
+        </div>
+      </div>
+      <div>
+        <label>상세페이지 문구 / GPT 생성 메모</label>
+        <textarea id="pCopy" placeholder="나중에 GPT가 생성한 상세페이지 카피나 옵션을 여기에 저장합니다."></textarea>
+      </div>
+      <div class="btn-row">
+        <button class="btn-primary" onclick="addProduct()">+ 상품 저장하기</button>
+      </div>
+    </section>
+
+    <!-- 상품 목록 -->
+    <section class="card">
+      <h2>등록된 상품 목록 (<span id="totalCount">0</span>개)</h2>
+      <div class="toolbar">
+        <input id="searchInput" type="text" placeholder="상품명 검색..." oninput="renderList()" />
+        <select id="filterStatus" onchange="renderList()">
+          <option value="ALL">전체 상태 보기</option>
+          <option value="수집완료">수집완료</option>
+          <option value="상세페이지 제작중">상세페이지 제작중</option>
+          <option value="업로드 완료">업로드 완료</option>
+        </select>
+      </div>
+
+      <table>
+        <thead>
+          <tr>
+            <th style="width: 68px;">썸네일</th>
+            <th>상품명 / 메모</th>
+            <th style="width: 110px;">판매가</th>
+            <th style="width: 160px;">상태</th>
+            <th style="width: 70px;">관리</th>
+          </tr>
+        </thead>
+        <tbody id="productTableBody"></tbody>
+      </table>
+    </section>
+  </div>
+
+  <script>
+    const cfg = window.COUPANG_CONFIG.firebase;
+    const isFirebaseReady = cfg.apiKey && !cfg.apiKey.startsWith("YOUR_");
+    let db = null;
+    let products = [];
+    const LOCAL_KEY = "coupang_auto_products_v1";
+
+    if (isFirebaseReady) {
+      firebase.initializeApp(cfg);
+      db = firebase.firestore();
+      const badge = document.getElementById("modeBadge");
+      badge.textContent = "☁️ Firebase 실시간 연동됨";
+      badge.className = "mode-badge mode-cloud";
+      subscribeFirebase();
+    } else {
+      loadLocal();
+    }
+
+    function loadLocal() {
+      const saved = localStorage.getItem(LOCAL_KEY);
+      products = saved ? JSON.parse(saved) : [];
+      renderList();
+    }
+    function saveLocal() {
+      localStorage.setItem(LOCAL_KEY, JSON.stringify(products));
+      renderList();
+    }
+
+    function subscribeFirebase() {
+      db.collection("products").orderBy("createdAt", "desc").onSnapshot((snapshot) => {
+        products = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        renderList();
+      });
+    }
+
+    async function addProduct() {
+      const name = document.getElementById("pName").value.trim();
+      if (!name) return alert("상품명을 입력해 주세요.");
+
+      const newItem = {
+        name,
+        price: Number(document.getElementById("pPrice").value) || 0,
+        sourceUrl: document.getElementById("pSourceUrl").value.trim(),
+        thumbUrl: document.getElementById("pThumbUrl").value.trim(),
+        status: document.getElementById("pStatus").value,
+        copy: document.getElementById("pCopy").value.trim(),
+        createdAt: Date.now()
+      };
+
+      if (isFirebaseReady) {
+        await db.collection("products").add(newItem);
+      } else {
+        products.unshift({ id: "local_" + Date.now(), ...newItem });
+        saveLocal();
+      }
+
+      ["pName", "pPrice", "pSourceUrl", "pThumbUrl", "pCopy"].forEach(id => {
+        document.getElementById(id).value = "";
+      });
+    }
+
+    async function updateStatus(id, newStatus) {
+      if (isFirebaseReady) {
+        await db.collection("products").doc(id).update({ status: newStatus });
+      } else {
+        const target = products.find(p => p.id === id);
+        if (target) target.status = newStatus;
+        saveLocal();
+      }
+    }
+
+    async function deleteProduct(id) {
+      if (!confirm("이 상품을 삭제할까요?")) return;
+      if (isFirebaseReady) {
+        await db.collection("products").doc(id).delete();
+      } else {
+        products = products.filter(p => p.id !== id);
+        saveLocal();
+      }
+    }
+
+    function renderList() {
+      const keyword = document.getElementById("searchInput").value.trim().toLowerCase();
+      const filter = document.getElementById("filterStatus").value;
+      const tbody = document.getElementById("productTableBody");
+
+      const filtered = products.filter(p => {
+        const matchText = p.name.toLowerCase().includes(keyword) || (p.copy || "").toLowerCase().includes(keyword);
+        const matchStatus = filter === "ALL" || p.status === filter;
+        return matchText && matchStatus;
+      });
+
+      document.getElementById("totalCount").textContent = filtered.length;
+
+      if (filtered.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="5" class="empty-msg">등록된 상품이 없습니다. 위에서 첫 상품을 추가해 보세요!</td></tr>`;
+        return;
+      }
+
+      tbody.innerHTML = filtered.map(p => `
+        <tr>
+          <td>
+            ${p.thumbUrl
+              ? `<img src="${p.thumbUrl}" class="thumb" alt="썸네일" />`
+              : `<div class="thumb" style="display:flex;align-items:center;justify-content:center;font-size:11px;color:#999;">없음</div>`}
+          </td>
+          <td>
+            <div style="font-weight:600;margin-bottom:4px;">
+              ${p.sourceUrl ? `<a href="${p.sourceUrl}" target="_blank" style="color:#2563eb;text-decoration:none;">${p.name} ↗</a>` : p.name}
+            </div>
+            <div style="font-size:12px;color:#666;">${p.copy || "메모 없음"}</div>
+          </td>
+          <td>${p.price.toLocaleString()}원</td>
+          <td>
+            <select class="status-select" onchange="updateStatus('${p.id}', this.value)">
+              <option value="수집완료" ${p.status === "수집완료" ? "selected" : ""}>수집완료</option>
+              <option value="상세페이지 제작중" ${p.status === "상세페이지 제작중" ? "selected" : ""}>상세페이지 제작중</option>
+              <option value="업로드 완료" ${p.status === "업로드 완료" ? "selected" : ""}>업로드 완료</option>
+            </select>
+          </td>
+          <td><button class="btn-danger" onclick="deleteProduct('${p.id}')">삭제</button></td>
+        </tr>
+      `).join("");
+    }
+  </script>
+</body>
+</html>
