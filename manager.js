@@ -182,7 +182,6 @@
     });
   }
 
-  // 1. 스타일 추가 (가운데 정렬 통일)
   const style = document.createElement("style");
   style.textContent = `
     body { margin: 0 !important; background: #f4f6fa !important; }
@@ -253,7 +252,6 @@
       flex: 1; margin-left: 225px; min-width: 0; padding: 24px;
       display: flex; flex-direction: column; align-items: center;
     }
-    /* 제작실과 수집 패널 모두 동일한 920px 폭과 가운데 정렬 적용 */
     #cpContent > main {
       width: 100% !important; max-width: 920px !important;
       margin: 0 auto 20px !important; padding: 0 !important;
@@ -414,7 +412,6 @@
   `;
   document.head.appendChild(style);
 
-  // 2. 레이아웃 구성
   const studioMain = document.querySelector("main");
 
   const topBar = document.createElement("header");
@@ -585,8 +582,8 @@
         <div id="${p}MarginResult" class="cp-margin-result">
           <span>쿠팡 수수료: 0원</span>
           <span>예상 부가세: 0원</span>
-          <span class="${c1}">예상 순수익: 0원 (0.0%)</span>
-          <span class="${c2}">부가세 포함 순수익: 0원 (0.0%)</span>
+          <span class="cp-profit-pos">예상 순수익: 0원 (0.0%)</span>
+          <span class="cp-profit-pos">부가세 포함 순수익: 0원 (0.0%)</span>
         </div>
       </div>
 
