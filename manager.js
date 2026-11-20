@@ -231,4 +231,443 @@
   const addView = document.createElement("div");
   addView.id = "cpAddView";
   addView.hidden = true;
-  addView
+  addView.innerHTML = `
+    <div class="cp-card">
+      <h2>➕ 새 상품 직접 등록</h2>
+      <div class="cp-grid">
+        <label>상품명<input id="mName" type="text" placeholder="예: 닥스 남성 긴팔 카라 니트"></label>
+        <label>판매가 (원)<input id="mPrice" type="number" placeholder="예: 89000"></label>
+        <label>소싱처 URL<input id="mSourceUrl" type="url" placeholder="https://www.lfmall.co.kr/..."></label>
+        <label>썸네일 URL<input id="mThumbUrl" type="url" placeholder="https://..."></label>
+        <label>진행 상태
+          <select id="mStatus">
+            <option value="수집완료">1. 수집완료</option>
+            <option value="상세페이지 제작중">2. 상세페이지 제작중</option>
+            <option value="업로드 완료">3. 쿠팡 업로드 완료</option>
+          </select>
+        </label>
+      </div>
+      <label>상세페이지 문구 / 메모
+        <textarea id="mCopy" rows="4" placeholder="CHECK POINT 문구나 메모를 입력하세요"></textarea>
+      </label>
+      <button type="button" id="btnAddManual" class="cp-primary-btn">+ 상품 저장하기</button>
+    </div>
+  `;
+
+  const editModal = document.createElement("div");
+  editModal.id = "cpEditModal";
+  editModal.hidden = true;
+  editModal.innerHTML = `
+    <div class="cp-modal-box">
+      <h3>✏️ 상품 정보 수정</h3>
+      <label>상품명<input id="eName" type="text"></label>
+      <div class="cp-grid">
+        <label>판매가 (원)<input id="ePrice" type="number"></label>
+        <label>진행 상태
+          <select id="eStatus">
+            <option value="수집완료">수집완료</option>
+            <option value="상세페이지 제작중">상세페이지 제작중</option>
+            <option value="업로드 완료">업로드 완료</option>
+          </select>
+        </label>
+      </div>
+      <label>소싱처 URL<input id="eSourceUrl" type="url"></label>
+      <label>썸네일 URL<input id="eThumbUrl" type="url"></label>
+      <label>상세페이지 문구 / 메모<textarea id="eCopy" rows="5"></textarea></label>
+      <div class="cp-modal-footer">
+        <button type="button" id="btnCancelEdit" class="cp-cancel-btn">취소</button>
+        <button type="button" id="btnSaveEdit" class="cp-primary-btn">저장하기</button>
+      </div>
+    </div>
+  `;
+
+  const loginOverlay = document.createElement("div");
+  loginOverlay.id = "cpLoginOverlay";
+  loginOverlay.hidden = true;
+  loginOverlay.innerHTML = `
+    <div class="cp-modal-box cp-login-box">
+      <h2>🔐 쿠팡 자동화 로그인</h2>
+      <p>승인된 팀원 계정으로 로그인하세요.</p>
+      <input id="cpLoginEmail" type="email" placeholder="이메일 (예: admin@team.com)">
+      <input id="cpLoginPw" type="password" placeholder="비밀번호">
+      <div id="cpLoginErr" class="cp-login-err"></div>
+      <button type="button" id="btnLoginSubmit" class="cp-primary-btn" style="width:100%;padding:12px !important;">로그인</button>
+    </div>
+  `;
+
+  if (studioMain) content.appendChild(studioMain);
+  content.appendChild(listView);
+  content.appendChild(addView);
+  layout.appendChild(sidebar);
+  layout.appendChild(content);
+
+  document.body.insertBefore(topBar, document.body.firstChild);
+  document.body.insertBefore(layout, topBar.nextSibling);
+  document.body.appendChild(editModal);
+  document.body.appendChild(loginOverlay);
+
+  // 3. 인증 및 토큰 자동 갱신
+  function updateAuthUI() {
+    if (authState?.idToken) {
+      loginOverlay.hidden = true;
+      document.getElementById("cpUserEmail").textContent = `👤 ${authState.email}`;
+    } else {
+      loginOverlay.hidden = false;
+      document.getElementById("cpUserEmail").textContent = "";
+    }
+  }
+
+  async function login(email, password) {
+    const errEl = document.getElementById("cpLoginErr");
+    errEl.textContent = "로그인 확인 중...";
+    try {
+      const res = await fetch(AUTH_URL, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, password, returnSecureToken: true })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error?.message || "이메일 또는 비밀번호를 확인해 주세요.");
+      saveAuth({
+        idToken: data.idToken,
+        refreshToken: data.refreshToken,
+        email: data.email,
+        expiresAt: Date.now() + Number(data.expiresIn || 3600) * 1000 - 60000
+      });
+      errEl.textContent = "";
+      document.getElementById("cpLoginPw").value = "";
+      updateAuthUI();
+      if (!listView.hidden) fetchProducts();
+    } catch (e) {
+      errEl.textContent = "로그인 실패: 이메일 또는 비밀번호를 확인하세요.";
+    }
+  }
+
+  async function refreshTokenIfNeeded(force = false) {
+    if (!authState?.refreshToken) return false;
+    if (!force && Date.now() < (authState.expiresAt || 0)) return true;
+    try {
+      const res = await fetch(REFRESH_URL, {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body: `grant_type=refresh_token&refresh_token=${encodeURIComponent(authState.refreshToken)}`
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error("토큰 갱신 실패");
+      saveAuth({
+        ...authState,
+        idToken: data.id_token,
+        refreshToken: data.refresh_token,
+        expiresAt: Date.now() + Number(data.expires_in || 3600) * 1000 - 60000
+      });
+      return true;
+    } catch {
+      saveAuth(null);
+      updateAuthUI();
+      return false;
+    }
+  }
+
+  async function authFetch(url, options = {}) {
+    const ok = await refreshTokenIfNeeded(false);
+    if (!ok || !authState?.idToken) {
+      updateAuthUI();
+      throw new Error("로그인이 필요합니다.");
+    }
+    const headers = { ...(options.headers || {}), Authorization: `Bearer ${authState.idToken}` };
+    let res = await fetch(url, { ...options, headers });
+    if (res.status === 401) {
+      const refreshed = await refreshTokenIfNeeded(true);
+      if (refreshed) {
+        headers.Authorization = `Bearer ${authState.idToken}`;
+        res = await fetch(url, { ...options, headers });
+      }
+    }
+    return res;
+  }
+
+  document.getElementById("btnLoginSubmit").addEventListener("click", () => {
+    const email = document.getElementById("cpLoginEmail").value.trim();
+    const pw = document.getElementById("cpLoginPw").value;
+    if (!email || !pw) return (document.getElementById("cpLoginErr").textContent = "이메일과 비밀번호를 입력하세요.");
+    login(email, pw);
+  });
+
+  document.getElementById("cpLoginPw").addEventListener("keydown", e => {
+    if (e.key === "Enter") document.getElementById("btnLoginSubmit").click();
+  });
+
+  document.getElementById("btnLogout").addEventListener("click", () => {
+    if (confirm("로그아웃 할까요?")) {
+      saveAuth(null);
+      updateAuthUI();
+    }
+  });
+
+  // 4. 사이드바 메뉴 전환
+  const menuButtons = sidebar.querySelectorAll(".cp-menu-item");
+  const titleEl = document.getElementById("cpCurrentTitle");
+  const titles = {
+    studio: "상세페이지·썸네일 제작실",
+    list: "상품 리스트",
+    add: "새 상품 직접 등록"
+  };
+
+  function switchView(viewName) {
+    menuButtons.forEach(btn => btn.classList.toggle("active", btn.dataset.view === viewName));
+    titleEl.textContent = titles[viewName] || "";
+    if (studioMain) studioMain.hidden = viewName !== "studio";
+    listView.hidden = viewName !== "list";
+    addView.hidden = viewName !== "add";
+    if (viewName === "list") fetchProducts();
+  }
+
+  menuButtons.forEach(btn => btn.addEventListener("click", () => switchView(btn.dataset.view)));
+
+  // 5. Firebase CRUD 함수들 (작업자 자동 기록 포함)
+  async function fetchProducts() {
+    const tbody = document.getElementById("mTableBody");
+    tbody.innerHTML = `<tr><td colspan="5" style="text-align:center;padding:30px;">데이터 불러오는 중...</td></tr>`;
+    try {
+      const res = await authFetch(`${BASE_URL}?key=${API_KEY}`);
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error?.message || "불러오기 실패");
+      const docs = json.documents || [];
+      products = docs.map(doc => {
+        const f = doc.fields || {};
+        return {
+          id: doc.name.split("/").pop(),
+          name: f.name?.stringValue || "",
+          price: Number(f.price?.integerValue || f.price?.doubleValue || 0),
+          sourceUrl: f.sourceUrl?.stringValue || "",
+          thumbUrl: f.thumbUrl?.stringValue || "",
+          status: f.status?.stringValue || "수집완료",
+          copy: f.copy?.stringValue || "",
+          author: f.author?.stringValue || "",
+          updatedBy: f.updatedBy?.stringValue || "",
+          createdAt: Number(f.createdAt?.integerValue || f.createdAt?.doubleValue || 0)
+        };
+      }).sort((a, b) => b.createdAt - a.createdAt);
+      renderList();
+    } catch (err) {
+      tbody.innerHTML = `<tr><td colspan="5" style="text-align:center;color:#dc2626;padding:30px;">오류: ${err.message}</td></tr>`;
+    }
+  }
+
+  async function saveToFirebase(item) {
+    const user = getUserName();
+    const payload = {
+      fields: {
+        name: { stringValue: item.name },
+        price: { integerValue: String(Math.round(item.price || 0)) },
+        sourceUrl: { stringValue: item.sourceUrl || "" },
+        thumbUrl: { stringValue: item.thumbUrl || "" },
+        status: { stringValue: item.status || "상세페이지 제작중" },
+        copy: { stringValue: item.copy || "" },
+        author: { stringValue: user },
+        updatedBy: { stringValue: user },
+        createdAt: { integerValue: String(Date.now()) }
+      }
+    };
+    const res = await authFetch(`${BASE_URL}?key=${API_KEY}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload)
+    });
+    if (!res.ok) throw new Error("저장 실패 (권한 또는 로그인 확인)");
+  }
+
+  async function updateProductInFirebase(id, item) {
+    const masks = ["name", "price", "sourceUrl", "thumbUrl", "status", "copy", "updatedBy"]
+      .map(f => `updateMask.fieldPaths=${f}`).join("&");
+    const payload = {
+      fields: {
+        name: { stringValue: item.name },
+        price: { integerValue: String(Math.round(item.price || 0)) },
+        sourceUrl: { stringValue: item.sourceUrl || "" },
+        thumbUrl: { stringValue: item.thumbUrl || "" },
+        status: { stringValue: item.status },
+        copy: { stringValue: item.copy || "" },
+        updatedBy: { stringValue: getUserName() }
+      }
+    };
+    const res = await authFetch(`${BASE_URL}/${id}?${masks}&key=${API_KEY}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload)
+    });
+    if (!res.ok) throw new Error("수정 실패");
+  }
+
+  async function updateStatusOnly(id, newStatus) {
+    await authFetch(`${BASE_URL}/${id}?updateMask.fieldPaths=status&updateMask.fieldPaths=updatedBy&key=${API_KEY}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        fields: {
+          status: { stringValue: newStatus },
+          updatedBy: { stringValue: getUserName() }
+        }
+      })
+    });
+  }
+
+  async function deleteProduct(id) {
+    if (!confirm("이 상품을 삭제할까요?")) return;
+    await authFetch(`${BASE_URL}/${id}?key=${API_KEY}`, { method: "DELETE" });
+    fetchProducts();
+  }
+
+  // 6. 수정 모달
+  function openEditModal(p) {
+    editingId = p.id;
+    document.getElementById("eName").value = p.name;
+    document.getElementById("ePrice").value = p.price;
+    document.getElementById("eStatus").value = p.status;
+    document.getElementById("eSourceUrl").value = p.sourceUrl;
+    document.getElementById("eThumbUrl").value = p.thumbUrl;
+    document.getElementById("eCopy").value = p.copy;
+    editModal.hidden = false;
+  }
+
+  document.getElementById("btnCancelEdit").addEventListener("click", () => {
+    editModal.hidden = true;
+    editingId = null;
+  });
+
+  document.getElementById("btnSaveEdit").addEventListener("click", async () => {
+    if (!editingId) return;
+    const name = document.getElementById("eName").value.trim();
+    if (!name) return alert("상품명을 입력해 주세요.");
+    try {
+      await updateProductInFirebase(editingId, {
+        name,
+        price: Number(document.getElementById("ePrice").value) || 0,
+        status: document.getElementById("eStatus").value,
+        sourceUrl: document.getElementById("eSourceUrl").value.trim(),
+        thumbUrl: document.getElementById("eThumbUrl").value.trim(),
+        copy: document.getElementById("eCopy").value.trim()
+      });
+      editModal.hidden = true;
+      editingId = null;
+      fetchProducts();
+    } catch (e) {
+      alert("수정 중 오류: " + e.message);
+    }
+  });
+
+  // 7. 제작실 -> 바로 저장
+  document.getElementById("btnQuickSave").addEventListener("click", async () => {
+    const brand = document.querySelector('input[placeholder="닥스"]')?.value.trim() || "";
+    const code = document.querySelector('input[placeholder="DMSW6D301BK"]')?.value.trim() || "";
+    const kind = document.querySelector('input[placeholder="긴팔 카라 니트"]')?.value.trim() || "";
+    const copy = document.getElementById("copy")?.value.trim() || "";
+    const firstImg = document.querySelector("#lfReceived img")?.src || "";
+
+    const storageData = (typeof chrome !== "undefined" && chrome.storage)
+      ? await new Promise(r => chrome.storage.local.get("lfMakerData", o => r(o.lfMakerData || {})))
+      : {};
+    const fullName = [brand, kind, code].filter(Boolean).join(" ") || storageData.title || "이름 없는 상품";
+
+    try {
+      await saveToFirebase({
+        name: fullName,
+        price: 0,
+        sourceUrl: storageData.url || "",
+        thumbUrl: firstImg,
+        status: "상세페이지 제작중",
+        copy
+      });
+      alert(`✅ [${fullName}] 상품이 저장되었습니다!`);
+      if (!listView.hidden) fetchProducts();
+    } catch (e) {
+      alert("저장 중 오류: " + e.message);
+    }
+  });
+
+  // 8. 수동 등록
+  document.getElementById("btnAddManual").addEventListener("click", async () => {
+    const name = document.getElementById("mName").value.trim();
+    if (!name) return alert("상품명을 입력해 주세요.");
+    try {
+      await saveToFirebase({
+        name,
+        price: Number(document.getElementById("mPrice").value) || 0,
+        sourceUrl: document.getElementById("mSourceUrl").value.trim(),
+        thumbUrl: document.getElementById("mThumbUrl").value.trim(),
+        status: document.getElementById("mStatus").value,
+        copy: document.getElementById("mCopy").value.trim()
+      });
+      ["mName", "mPrice", "mSourceUrl", "mThumbUrl", "mCopy"].forEach(id => document.getElementById(id).value = "");
+      alert("✅ 상품이 등록되었습니다!");
+      switchView("list");
+    } catch (e) {
+      alert("저장 중 오류: " + e.message);
+    }
+  });
+
+  document.getElementById("btnRefresh").addEventListener("click", fetchProducts);
+  document.getElementById("mSearch").addEventListener("input", renderList);
+  document.getElementById("mFilter").addEventListener("change", renderList);
+
+  // 9. 테이블 렌더링
+  function renderList() {
+    const kw = document.getElementById("mSearch").value.trim().toLowerCase();
+    const filter = document.getElementById("mFilter").value;
+    const tbody = document.getElementById("mTableBody");
+
+    const filtered = products.filter(p => {
+      const matchText = p.name.toLowerCase().includes(kw) || p.copy.toLowerCase().includes(kw);
+      const matchStatus = filter === "ALL" || p.status === filter;
+      return matchText && matchStatus;
+    });
+
+    document.getElementById("mCount").textContent = filtered.length;
+    tbody.innerHTML = "";
+
+    if (!filtered.length) {
+      tbody.innerHTML = `<tr><td colspan="5" style="text-align:center;padding:30px;color:#64748b;">저장된 상품이 없습니다.</td></tr>`;
+      return;
+    }
+
+    filtered.forEach(p => {
+      const tr = document.createElement("tr");
+      const workerInfo = [
+        p.author ? `등록: ${p.author}` : "",
+        p.updatedBy ? `수정: ${p.updatedBy}` : ""
+      ].filter(Boolean).join(" · ");
+
+      tr.innerHTML = `
+        <td>${p.thumbUrl ? `<img src="${p.thumbUrl}" class="cp-thumb">` : `<div class="cp-thumb"></div>`}</td>
+        <td>
+          <div style="font-weight:700;word-break:break-word;">
+            ${p.sourceUrl ? `<a href="${p.sourceUrl}" target="_blank" style="color:#003cb3;text-decoration:none;">${p.name} ↗</a>` : p.name}
+          </div>
+          <div class="cp-memo-preview" title="${p.copy.replace(/"/g, '"')}">${p.copy || "메모 없음"}</div>
+          ${workerInfo ? `<div class="cp-worker-tag">${workerInfo}</div>` : ""}
+        </td>
+        <td style="font-weight:600;">${p.price.toLocaleString()}원</td>
+        <td>
+          <select class="cp-row-status">
+            <option value="수집완료" ${p.status === "수집완료" ? "selected" : ""}>수집완료</option>
+            <option value="상세페이지 제작중" ${p.status === "상세페이지 제작중" ? "selected" : ""}>상세페이지 제작중</option>
+            <option value="업로드 완료" ${p.status === "업로드 완료" ? "selected" : ""}>업로드 완료</option>
+          </select>
+        </td>
+        <td>
+          <div class="cp-action-wrap">
+            <button type="button" class="cp-edit-btn">수정</button>
+            <button type="button" class="cp-del-btn">삭제</button>
+          </div>
+        </td>
+      `;
+      tr.querySelector(".cp-row-status").addEventListener("change", e => updateStatusOnly(p.id, e.target.value));
+      tr.querySelector(".cp-edit-btn").addEventListener("click", () => openEditModal(p));
+      tr.querySelector(".cp-del-btn").addEventListener("click", () => deleteProduct(p.id));
+      tbody.appendChild(tr);
+    });
+  }
+
+  // 초기 실행 시 로그인 여부 확인
+  updateAuthUI();
+})();
