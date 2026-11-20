@@ -11,6 +11,8 @@
 
   const DEFAULT_FEE_RATE = 11.55;
   const DEFAULT_SHIPPING = 0;
+  const DEFAULT_TARGET_MARGIN = 20;
+  const MAX_STOCK = 10;
 
   const CATEGORY_TREE = {
     "가디건": ["남성 기본(허리길이)가디건", "남성 롱 가디건"],
@@ -86,6 +88,12 @@
     return Number(String(val ?? "").replace(/[^0-9-]/g, "")) || 0;
   }
 
+  function clampStock(val) {
+    const n = Number(val);
+    if (!Number.isFinite(n) || n < 0) return 0;
+    return Math.min(MAX_STOCK, Math.round(n));
+  }
+
   function formatComma(val) {
     const raw = String(val ?? "").replace(/[^0-9]/g, "");
     if (!raw) return "";
@@ -138,7 +146,8 @@
     return { fee, profit, rate, vat, profitAfterVat, rateAfterVat };
   }
 
-  function calcTargetSalePrice(cost, targetMarginPct, feeRate = DEFAULT_FEE_RATE, shipping = DEFAULT_SHIPPING) {
+  // 1,000원 단위 반올림 판매가 계산 (기본 20% 마진)
+  function calcTargetSalePrice(cost, targetMarginPct = DEFAULT_TARGET_MARGIN, feeRate = DEFAULT_FEE_RATE, shipping = DEFAULT_SHIPPING) {
     const denom = 1 - (Number(feeRate) / 100) - (Number(targetMarginPct) / 100);
     if (denom <= 0) return 0;
     const raw = (parseNum(cost) + parseNum(shipping)) / denom;
@@ -156,18 +165,26 @@
     });
   }
 
-  // 하단 '상세페이지 제작' 바 숨김 처리
-  function hideBottomStudioBar() {
-    document.querySelectorAll("div, footer, nav, section, aside").forEach(el => {
+  // 하단 '상세페이지 제작' 바 및 '남성 숏패딩 기본 사이즈표' 숨김 처리
+  function cleanUnwantedUI() {
+    document.querySelectorAll("div, footer, nav, section, aside, label, h2, h3, h4").forEach(el => {
       if (el.id?.startsWith("cp") || el.closest("#cpTopBar, #cpSidebar, #cpEditModal, #cpLoginOverlay, #cpStudioRegSection")) return;
-      const txt = (el.innerText || "").trim();
+      const txt = (el.innerText || "").replace(/\s+/g, " ").trim();
       if (txt === "상세페이지 제작" && el.children.length <= 3) {
         el.style.setProperty("display", "none", "important");
+      }
+      if (/남성\s*숏패딩\s*기본\s*사이즈표/.test(txt)) {
+        const box = el.closest("section, article, form") || el.parentElement;
+        if (box && box.tagName !== "MAIN" && box.id !== "cpContent") {
+          box.style.setProperty("display", "none", "important");
+        } else {
+          el.style.setProperty("display", "none", "important");
+        }
       }
     });
   }
 
-  // 1. 스타일 추가 (내부 레이아웃 충돌 최소화)
+  // 1. 스타일 추가
   const style = document.createElement("style");
   style.textContent = `
     body { margin: 0 !important; background: #f4f6fa !important; }
@@ -235,15 +252,14 @@
     .cp-side-btn:hover { background: #e2e8f0 !important; }
 
     #cpContent { flex: 1; margin-left: 225px; min-width: 0; padding: 24px; }
-    /* 제작실 내부 가로 겹침 방지를 위해 max-width 넉넉하게 유지 */
+    /* 제작실 내부 가로 겹침 방지 */
     #cpContent > main { max-width: 1120px !important; margin: 0 auto 18px !important; padding: 0 !important; }
-    #cpContent > main button { white-space: nowrap; flex-shrink: 0; }
 
     .cp-card {
       background: #fff; border: 1px solid #e2e8f0; border-radius: 12px;
       padding: 22px; margin-bottom: 18px; box-shadow: 0 1px 3px rgba(0,0,0,0.03);
     }
-    .cp-studio-reg-card { max-width: 920px; margin: 0 auto 24px; border-top: 4px solid #003cb3; }
+    .cp-studio-reg-card { max-width: 920px; margin: 0 auto 20px; border-top: 4px solid #003cb3; }
     .cp-card-head {
       display: flex; justify-content: space-between; align-items: center;
       margin-bottom: 14px; gap: 10px; flex-wrap: wrap;
@@ -474,9 +490,10 @@
   function buildFormHTML(p, isStudio = false) {
     const mainOpts = Object.keys(CATEGORY_TREE)
       .map(k => `<option value="${k}">${k}</option>`).join("");
-    const noticeInputs = NOTICE_FIELDS.map(([key, label]) =>
-      `<label class="cp-field-label">${label}<input id="${p}Notice_${key}" type="text" placeholder="비워두면 '상세페이지 참조'로 자동 입력"></label>`
-    ).join("");
+    const noticeInputs = NOTICE_FIELDS.map(([key, label]) => {
+      const defVal = key === "asInfo" ? "상세페이지 참고" : "";
+      return `<label class="cp-field-label">${label}<input id="${p}Notice_${key}" type="text" value="${defVal}" placeholder="비워두면 '상세페이지 참조'로 자동 입력"></label>`;
+    }).join("");
 
     return `
       <div class="cp-grid-3">
@@ -512,7 +529,7 @@
 
       <div class="cp-opt-box">
         <div class="cp-opt-head">
-          <span>🎨 옵션 관리 (색상 · 상품코드 · 사이즈 · 재고)</span>
+          <span>🎨 옵션 관리 (색상 · 상품코드 · 사이즈 · 재고 최대 10개)</span>
           <button type="button" id="${p}BtnAddOpt" class="cp-opt-add-btn">+ 옵션 행 추가</button>
         </div>
         <table class="cp-opt-table">
@@ -521,7 +538,7 @@
               <th style="width:22%;">색상</th>
               <th style="width:32%;">상품 코드 (품번)</th>
               <th style="width:20%;">사이즈</th>
-              <th style="width:18%;">재고수량</th>
+              <th style="width:18%;">재고 (최대 10)</th>
               <th style="width:8%;"></th>
             </tr>
           </thead>
@@ -543,7 +560,7 @@
 
       <div class="cp-grid-3">
         <label class="cp-field-label">최대혜택가 / 소싱가 (원)<input id="${p}DiscountPrice" class="cp-money-input" type="text" inputmode="numeric" placeholder="예: 69,000"></label>
-        <label class="cp-field-label">쿠팡 판매가 (원)<input id="${p}Price" class="cp-money-input" type="text" inputmode="numeric" placeholder="예: 89,000"></label>
+        <label class="cp-field-label">쿠팡 판매가 (20% 마진 자동)<input id="${p}Price" class="cp-money-input" type="text" inputmode="numeric" placeholder="자동 계산됨"></label>
         <label class="cp-field-label">정가 (할인율기준가/원)<input id="${p}RegularPrice" class="cp-money-input" type="text" inputmode="numeric" placeholder="예: 129,000"></label>
       </div>
 
@@ -552,7 +569,7 @@
         <div class="cp-margin-row">
           <label class="cp-field-label">수수료율 (%)<input id="${p}FeeRate" type="number" step="0.01" value="${DEFAULT_FEE_RATE}"></label>
           <label class="cp-field-label">배송비 부담 (원)<input id="${p}Shipping" class="cp-money-input" type="text" inputmode="numeric" value="${DEFAULT_SHIPPING}"></label>
-          <label class="cp-field-label">목표 마진율 (%)<input id="${p}TargetMargin" type="number" placeholder="예: 20"></label>
+          <label class="cp-field-label">목표 마진율 (%)<input id="${p}TargetMargin" type="number" value="${DEFAULT_TARGET_MARGIN}"></label>
           <button type="button" id="${p}BtnCalcPrice" class="cp-calc-btn">판매가 자동 계산</button>
         </div>
         <div id="${p}MarginResult" class="cp-margin-result">
@@ -574,13 +591,14 @@
     `;
   }
 
+  // 최상단에 배치되는 'LF몰 정보 수집' 섹션
   const studioRegSection = document.createElement("section");
   studioRegSection.id = "cpStudioRegSection";
   studioRegSection.className = "cp-card cp-studio-reg-card";
   studioRegSection.innerHTML = `
     <div class="cp-card-head">
-      <h2 style="margin:0;">🛒 쿠팡 상품 등록 · 마진 · 엑셀 정보</h2>
-      <button type="button" id="btnSyncFromStudio" class="cp-sub-btn">📥 확장프로그램 수집값 자동 반영</button>
+      <h2 style="margin:0;">📥 LF몰 정보 수집</h2>
+      <button type="button" id="btnSyncFromStudio" class="cp-sub-btn">🔄 확장프로그램 수집값 자동 반영</button>
     </div>
     ${buildFormHTML("s", true)}
     <div style="display:flex;justify-content:flex-end;gap:10px;margin-top:10px;">
@@ -617,12 +635,9 @@
     </div>
   `;
 
-  if (studioMain) {
-    content.appendChild(studioMain);
-    content.appendChild(studioRegSection);
-  } else {
-    content.appendChild(studioRegSection);
-  }
+  // 'LF몰 정보 수집'을 맨 위로 올리고 그 아래에 제작실(main) 배치
+  content.appendChild(studioRegSection);
+  if (studioMain) content.appendChild(studioMain);
   content.appendChild(listView);
   layout.appendChild(sidebar);
   layout.appendChild(content);
@@ -632,19 +647,26 @@
   document.body.appendChild(editModal);
   document.body.appendChild(loginOverlay);
 
-  hideBottomStudioBar();
-  setTimeout(hideBottomStudioBar, 600);
+  cleanUnwantedUI();
+  setTimeout(cleanUnwantedUI, 600);
 
   document.addEventListener("input", e => {
     if (e.target.classList.contains("cp-money-input")) {
       e.target.value = formatComma(e.target.value);
+    }
+    if (e.target.classList.contains("opt-stock")) {
+      const clamped = clampStock(e.target.value);
+      if (String(clamped) !== e.target.value && e.target.value !== "") {
+        e.target.value = clamped;
+      }
     }
   });
 
   function getNoticeFromForm(p) {
     const obj = {};
     NOTICE_FIELDS.forEach(([k]) => {
-      obj[k] = document.getElementById(`${p}Notice_${k}`)?.value.trim() || "";
+      const val = document.getElementById(`${p}Notice_${k}`)?.value.trim() || "";
+      obj[k] = k === "asInfo" ? (val || "상세페이지 참고") : val;
     });
     return obj;
   }
@@ -652,7 +674,10 @@
   function setNoticeToForm(p, notice = {}) {
     NOTICE_FIELDS.forEach(([k]) => {
       const el = document.getElementById(`${p}Notice_${k}`);
-      if (el) el.value = notice?.[k] || "";
+      if (el) {
+        if (k === "asInfo") el.value = notice?.[k] || "상세페이지 참고";
+        else el.value = notice?.[k] || "";
+      }
     });
   }
 
@@ -684,18 +709,19 @@
 
   function setupOptionTable(p) {
     const tbody = document.getElementById(`${p}OptBody`);
-    function addRow(opt = { color: "", code: "", size: "", stock: 999 }) {
+    function addRow(opt = { color: "", code: "", size: "", stock: MAX_STOCK }) {
+      const safeStock = clampStock(opt.stock ?? MAX_STOCK);
       const tr = document.createElement("tr");
       tr.innerHTML = `
         <td><input type="text" class="opt-color" placeholder="예: 블랙" value="${opt.color || ""}"></td>
         <td><input type="text" class="opt-code" placeholder="예: DMSW6D301BK" value="${opt.code || ""}"></td>
         <td><input type="text" class="opt-size" placeholder="예: 100" value="${opt.size || ""}"></td>
-        <td><input type="number" class="opt-stock" min="0" value="${opt.stock ?? 999}"></td>
+        <td><input type="number" class="opt-stock" min="0" max="${MAX_STOCK}" value="${safeStock}"></td>
         <td><button type="button" class="cp-opt-del-btn">×</button></td>
       `;
       tr.querySelector(".cp-opt-del-btn").addEventListener("click", () => {
         if (tbody.children.length > 1) tr.remove();
-        else tr.querySelectorAll("input").forEach(i => (i.value = i.classList.contains("opt-stock") ? 999 : ""));
+        else tr.querySelectorAll("input").forEach(i => (i.value = i.classList.contains("opt-stock") ? MAX_STOCK : ""));
       });
       tbody.appendChild(tr);
     }
@@ -705,7 +731,7 @@
         color: last?.querySelector(".opt-color")?.value || "",
         code: last?.querySelector(".opt-code")?.value || "",
         size: "",
-        stock: 999
+        stock: MAX_STOCK
       });
     });
     addRow();
@@ -720,7 +746,7 @@
           color: tr.querySelector(".opt-color").value.trim(),
           code: tr.querySelector(".opt-code").value.trim(),
           size: tr.querySelector(".opt-size").value.trim(),
-          stock: Number(tr.querySelector(".opt-stock").value) || 0
+          stock: clampStock(tr.querySelector(".opt-stock").value)
         })).filter(o => o.color || o.code || o.size);
       }
     };
@@ -744,13 +770,30 @@
   const updateStudioTags = setupTagCounter("s");
   const updateEditTags = setupTagCounter("e");
 
-  function bindMarginCalc(p) {
+  function bindMarginCalc(p, autoFillOnCostChange = false) {
     const costEl = document.getElementById(`${p}DiscountPrice`);
     const priceEl = document.getElementById(`${p}Price`);
     const feeEl = document.getElementById(`${p}FeeRate`);
     const shipEl = document.getElementById(`${p}Shipping`);
     const targetEl = document.getElementById(`${p}TargetMargin`);
     const resEl = document.getElementById(`${p}MarginResult`);
+
+    function applyTarget(force = false) {
+      const cost = parseNum(costEl.value);
+      const target = Number(targetEl.value) || DEFAULT_TARGET_MARGIN;
+      if (!cost) {
+        if (force) alert("먼저 최대혜택가(소싱가)를 입력해 주세요.");
+        return;
+      }
+      const recommended = calcTargetSalePrice(cost, target, feeEl.value, shipEl.value);
+      if (!recommended) {
+        if (force) alert("목표 마진율이 너무 높습니다.");
+        return;
+      }
+      if (force || !parseNum(priceEl.value)) {
+        priceEl.value = formatComma(recommended);
+      }
+    }
 
     function update() {
       const { fee, profit, rate, vat, profitAfterVat, rateAfterVat } =
@@ -765,24 +808,32 @@
       `;
     }
 
-    [costEl, priceEl, feeEl, shipEl].forEach(el => el.addEventListener("input", update));
-    document.getElementById(`${p}BtnCalcPrice`).addEventListener("click", () => {
-      const cost = parseNum(costEl.value);
-      const target = Number(targetEl.value) || 0;
-      if (!cost) return alert("먼저 최대혜택가(소싱가)를 입력해 주세요.");
-      if (!target) return alert("목표 마진율(%)을 입력해 주세요.");
-      const recommended = calcTargetSalePrice(cost, target, feeEl.value, shipEl.value);
-      if (!recommended) return alert("목표 마진율이 너무 높습니다.");
-      priceEl.value = formatComma(recommended);
+    costEl.addEventListener("input", () => {
+      if (autoFillOnCostChange) applyTarget(false);
       update();
     });
-    return update;
+    [priceEl, feeEl, shipEl].forEach(el => el.addEventListener("input", update));
+    document.getElementById(`${p}BtnCalcPrice`).addEventListener("click", () => {
+      applyTarget(true);
+      update();
+    });
+    return { update, applyTarget };
   }
 
-  const updateStudioMargin = bindMarginCalc("s");
-  const updateEditMargin = bindMarginCalc("e");
+  const studioMarginCtrl = bindMarginCalc("s", true);
+  const editMarginCtrl = bindMarginCalc("e", false);
 
-  // 확장프로그램 및 제작실 데이터 읽기
+  // 수집된 실측 사이즈표를 상세페이지 사이즈표 입력란에 채워 넣기
+  function applyMeasuredSizesToStudio(measuredSizes) {
+    if (!measuredSizes?.rows?.length) return;
+    const textareas = [...document.querySelectorAll("textarea")].filter(t => !t.id?.startsWith("cp") && !t.id?.match(/^[se](Copy|Tags)/));
+    const sizeArea = textareas.find(t => /사이즈|실측|치수/.test((t.placeholder || "") + (t.getAttribute("aria-label") || "")));
+    if (sizeArea && !sizeArea.value.trim()) {
+      sizeArea.value = measuredSizes.summaryText;
+      sizeArea.dispatchEvent(new Event("input", { bubbles: true }));
+    }
+  }
+
   async function readStudioAndExtensionData() {
     const brand = document.querySelector('input[placeholder="닥스"]')?.value.trim() || "";
     const code = document.querySelector('input[placeholder="DMSW6D301BK"]')?.value.trim() || "";
@@ -796,8 +847,19 @@
 
     const defaultName = [brand, kind, code].filter(Boolean).join(" ") || storageData.lfName || storageData.title || "";
     const collectedOptions = (Array.isArray(storageData.options) && storageData.options.length)
-      ? storageData.options
-      : (code ? [{ color: "", code, size: "", stock: 999 }] : []);
+      ? storageData.options.map(o => ({ ...o, stock: clampStock(o.stock ?? MAX_STOCK) }))
+      : (code ? [{ color: "", code, size: "", stock: MAX_STOCK }] : []);
+
+    const colorsFromOpts = [...new Set(collectedOptions.map(o => o.color).filter(Boolean))];
+    const colorText = (Array.isArray(storageData.colors) && storageData.colors.length)
+      ? storageData.colors.join(", ")
+      : colorsFromOpts.join(", ");
+
+    const mergedNotice = {
+      ...(storageData.notice || {}),
+      color: colorText || storageData.notice?.color || "",
+      asInfo: "상세페이지 참고"
+    };
 
     return {
       brand,
@@ -809,12 +871,12 @@
       discountPrice: Number(storageData.discountPrice) || 0,
       regularPrice: Number(storageData.regularPrice) || 0,
       options: collectedOptions,
-      notice: storageData.notice || {},
+      measuredSizes: storageData.measuredSizes || null,
+      notice: mergedNotice,
       studioCopy
     };
   }
 
-  // 수집된 값 자동 반영 (overwrite=true면 최신 수집값으로 덮어쓰기)
   async function syncFromStudioPanel(showToast = true, overwrite = false) {
     const d = await readStudioAndExtensionData();
     if (d.brand && (overwrite || !document.getElementById("sBrand").value)) {
@@ -834,6 +896,8 @@
     }
     if (d.discountPrice && (overwrite || !parseNum(document.getElementById("sDiscountPrice").value))) {
       document.getElementById("sDiscountPrice").value = formatComma(d.discountPrice);
+      const autoSale = calcTargetSalePrice(d.discountPrice, Number(document.getElementById("sTargetMargin").value) || DEFAULT_TARGET_MARGIN, document.getElementById("sFeeRate").value, document.getElementById("sShipping").value);
+      if (autoSale) document.getElementById("sPrice").value = formatComma(autoSale);
     }
     if (d.regularPrice && (overwrite || !parseNum(document.getElementById("sRegularPrice").value))) {
       document.getElementById("sRegularPrice").value = formatComma(d.regularPrice);
@@ -847,13 +911,15 @@
     if (d.notice && Object.values(d.notice).some(Boolean)) {
       setNoticeToForm("s", d.notice);
     }
-    updateStudioMargin();
-    if (showToast) alert("📥 확장프로그램 수집값(옵션·고시정보·가격·상품명·이미지)을 반영했습니다!");
+    if (d.measuredSizes?.rows?.length) {
+      applyMeasuredSizesToStudio(d.measuredSizes);
+    }
+    studioMarginCtrl.update();
+    if (showToast) alert("📥 확장프로그램 수집값(옵션·고시정보·가격·실측사이즈·상품명·이미지)을 반영했습니다!");
   }
 
   document.getElementById("btnSyncFromStudio").addEventListener("click", () => syncFromStudioPanel(true, true));
 
-  // 크롬 스토리지에 새 수집 데이터가 저장되면 자동으로 입력란에 반영
   if (typeof chrome !== "undefined" && chrome.storage?.onChanged) {
     chrome.storage.onChanged.addListener((changes, area) => {
       if (area === "local" && changes.lfMakerData?.newValue) {
@@ -866,11 +932,12 @@
     ["sBrand", "sName", "sLfName", "sTags", "sSourceUrl", "sThumbUrl", "sDetailImgUrl", "sDiscountPrice", "sPrice", "sRegularPrice", "sCopy"]
       .forEach(id => (document.getElementById(id).value = ""));
     document.getElementById("sUploadDate").value = formatDate();
+    document.getElementById("sTargetMargin").value = DEFAULT_TARGET_MARGIN;
     studioCatCtrl.setPath("");
     studioOptCtrl.setOptions([]);
-    setNoticeToForm("s", {});
+    setNoticeToForm("s", { asInfo: "상세페이지 참고" });
     updateStudioTags();
-    updateStudioMargin();
+    studioMarginCtrl.update();
   });
 
   // 3. 인증 및 토큰 자동 갱신
@@ -989,7 +1056,7 @@
     listView.hidden = isStudio;
     if (isStudio) {
       syncFromStudioPanel(false, false);
-      hideBottomStudioBar();
+      cleanUnwantedUI();
     } else {
       fetchProducts();
     }
@@ -1059,8 +1126,8 @@
           name: f.name?.stringValue || "",
           lfName: f.lfName?.stringValue || "",
           code: f.code?.stringValue || "",
-          options,
-          notice,
+          options: options.map(o => ({ ...o, stock: clampStock(o.stock ?? MAX_STOCK) })),
+          notice: { ...notice, asInfo: notice?.asInfo || "상세페이지 참고" },
           tags: f.tags?.stringValue || "",
           sourceUrl: f.sourceUrl?.stringValue || "",
           thumbUrl: f.thumbUrl?.stringValue || "",
@@ -1086,6 +1153,9 @@
   async function saveToFirebase(item) {
     const user = getUserName();
     const firstCode = item.code || (item.options?.[0]?.code || "");
+    const safeOpts = (item.options || []).map(o => ({ ...o, stock: clampStock(o.stock ?? MAX_STOCK) }));
+    const mergedNotice = { ...(item.notice || {}), asInfo: item.notice?.asInfo || "상세페이지 참고" };
+
     const payload = {
       fields: {
         uploadDate: { stringValue: item.uploadDate || formatDate() },
@@ -1094,8 +1164,8 @@
         name: { stringValue: item.name },
         lfName: { stringValue: item.lfName || "" },
         code: { stringValue: firstCode },
-        optionsJson: { stringValue: JSON.stringify(item.options || []) },
-        noticeJson: { stringValue: JSON.stringify(item.notice || {}) },
+        optionsJson: { stringValue: JSON.stringify(safeOpts) },
+        noticeJson: { stringValue: JSON.stringify(mergedNotice) },
         tags: { stringValue: parseTags(item.tags).join("/") },
         sourceUrl: { stringValue: item.sourceUrl || "" },
         thumbUrl: { stringValue: item.thumbUrl || "" },
@@ -1126,6 +1196,9 @@
     ];
     const masks = fieldKeys.map(f => `updateMask.fieldPaths=${f}`).join("&");
     const firstCode = item.code || (item.options?.[0]?.code || "");
+    const safeOpts = (item.options || []).map(o => ({ ...o, stock: clampStock(o.stock ?? MAX_STOCK) }));
+    const mergedNotice = { ...(item.notice || {}), asInfo: item.notice?.asInfo || "상세페이지 참고" };
+
     const payload = {
       fields: {
         uploadDate: { stringValue: item.uploadDate || formatDate() },
@@ -1134,8 +1207,8 @@
         name: { stringValue: item.name },
         lfName: { stringValue: item.lfName || "" },
         code: { stringValue: firstCode },
-        optionsJson: { stringValue: JSON.stringify(item.options || []) },
-        noticeJson: { stringValue: JSON.stringify(item.notice || {}) },
+        optionsJson: { stringValue: JSON.stringify(safeOpts) },
+        noticeJson: { stringValue: JSON.stringify(mergedNotice) },
         tags: { stringValue: parseTags(item.tags).join("/") },
         sourceUrl: { stringValue: item.sourceUrl || "" },
         thumbUrl: { stringValue: item.thumbUrl || "" },
@@ -1221,7 +1294,8 @@
         const brandVal = p.brand || (p.name.split(" ")[0] || "자체브랜드");
         const opts = (p.options && p.options.length)
           ? p.options
-          : [{ color: "", code: p.code || "", size: "", stock: 999 }];
+          : [{ color: "", code: p.code || "", size: "", stock: MAX_STOCK }];
+        const allColorsStr = [...new Set(opts.map(o => o.color).filter(Boolean))].join(", ");
         const n = p.notice || {};
 
         opts.forEach(opt => {
@@ -1238,7 +1312,7 @@
           if (opt.size) { r[11] = "사이즈"; r[12] = opt.size; }
           r[61] = p.price || 0;
           r[63] = p.regularPrice || p.price || 0;
-          r[64] = opt.stock ?? 999;
+          r[64] = clampStock(opt.stock ?? MAX_STOCK);
           r[65] = 2;
           r[66] = 0;
           r[67] = 1;
@@ -1253,14 +1327,14 @@
 
           r[88] = "의류";
           r[89] = n.material || "상세페이지 참조";
-          r[90] = n.color || opt.color || "상세페이지 참조";
+          r[90] = allColorsStr || n.color || opt.color || "상세페이지 참조";
           r[91] = n.size || opt.size || "상세페이지 참조";
           r[92] = n.manufacturer || brandVal || "상세페이지 참조";
           r[93] = n.country || "상세페이지 참조";
           r[94] = n.care || "상세페이지 참조";
           r[95] = n.mfgDate || "상세페이지 참조";
           r[96] = n.warranty || "상세페이지 참조";
-          r[97] = n.asInfo || "상세페이지 참조";
+          r[97] = n.asInfo || "상세페이지 참고";
 
           r[103] = p.thumbUrl || "";
           r[109] = p.detailImgUrl || p.thumbUrl || "";
@@ -1286,7 +1360,7 @@
     document.getElementById("eLfName").value = p.lfName || "";
     editCatCtrl.setPath(p.category || "");
     editOptCtrl.setOptions(
-      p.options && p.options.length ? p.options : [{ color: "", code: p.code || "", size: "", stock: 999 }]
+      p.options && p.options.length ? p.options : [{ color: "", code: p.code || "", size: "", stock: MAX_STOCK }]
     );
     setNoticeToForm("e", p.notice || {});
     document.getElementById("eTags").value = (p.tags || "").replace(/\//g, ", ");
@@ -1299,7 +1373,7 @@
     document.getElementById("eRegularPrice").value = formatComma(p.regularPrice);
     document.getElementById("eStatus").value = p.status || "수집완료";
     document.getElementById("eCopy").value = p.copy || "";
-    updateEditMargin();
+    editMarginCtrl.update();
     editModal.hidden = false;
   }
 
@@ -1350,10 +1424,22 @@
 
     const panelOptions = studioOptCtrl.getOptions();
     const finalOptions = panelOptions.length ? panelOptions : ext.options;
+    const allColorsStr = [...new Set(finalOptions.map(o => o.color).filter(Boolean))].join(", ");
 
     const panelNotice = getNoticeFromForm("s");
     const hasPanelNotice = Object.values(panelNotice).some(Boolean);
-    const finalNotice = hasPanelNotice ? panelNotice : (ext.notice || {});
+    const baseNotice = hasPanelNotice ? panelNotice : (ext.notice || {});
+    const finalNotice = {
+      ...baseNotice,
+      color: allColorsStr || baseNotice.color || "",
+      asInfo: "상세페이지 참고"
+    };
+
+    const costVal = parseNum(document.getElementById("sDiscountPrice").value) || ext.discountPrice;
+    let saleVal = parseNum(document.getElementById("sPrice").value);
+    if (!saleVal && costVal) {
+      saleVal = calcTargetSalePrice(costVal, Number(document.getElementById("sTargetMargin").value) || DEFAULT_TARGET_MARGIN, document.getElementById("sFeeRate").value, document.getElementById("sShipping").value);
+    }
 
     const panelCopy = document.getElementById("sCopy").value.trim();
     const finalCopy = panelCopy || ext.studioCopy;
@@ -1372,13 +1458,13 @@
         sourceUrl: document.getElementById("sSourceUrl").value.trim() || ext.sourceUrl,
         thumbUrl: document.getElementById("sThumbUrl").value.trim() || ext.thumbUrl,
         detailImgUrl: document.getElementById("sDetailImgUrl").value.trim(),
-        discountPrice: parseNum(document.getElementById("sDiscountPrice").value) || ext.discountPrice,
-        price: parseNum(document.getElementById("sPrice").value),
+        discountPrice: costVal,
+        price: saleVal,
         regularPrice: parseNum(document.getElementById("sRegularPrice").value) || ext.regularPrice,
         status: document.getElementById("sStatus").value || "상세페이지 제작중",
         copy: finalCopy
       });
-      alert(`✅ [${fullName}] 상품이 저장되었습니다!\n(옵션 ${finalOptions.length}개 반영)`);
+      alert(`✅ [${fullName}] 상품이 저장되었습니다!\n(옵션 ${finalOptions.length}개 · 20% 마진 판매가 반영)`);
       if (!listView.hidden) fetchProducts();
     } catch (e) {
       alert("저장 중 오류: " + e.message);
