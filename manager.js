@@ -146,7 +146,6 @@
     return { fee, profit, rate, vat, profitAfterVat, rateAfterVat };
   }
 
-  // 1,000원 단위 반올림 판매가 계산 (기본 20% 마진)
   function calcTargetSalePrice(cost, targetMarginPct = DEFAULT_TARGET_MARGIN, feeRate = DEFAULT_FEE_RATE, shipping = DEFAULT_SHIPPING) {
     const denom = 1 - (Number(feeRate) / 100) - (Number(targetMarginPct) / 100);
     if (denom <= 0) return 0;
@@ -165,7 +164,6 @@
     });
   }
 
-  // 하단 '상세페이지 제작' 바 및 '남성 숏패딩 기본 사이즈표' 숨김 처리
   function cleanUnwantedUI() {
     document.querySelectorAll("div, footer, nav, section, aside, label, h2, h3, h4").forEach(el => {
       if (el.id?.startsWith("cp") || el.closest("#cpTopBar, #cpSidebar, #cpEditModal, #cpLoginOverlay, #cpStudioRegSection")) return;
@@ -184,7 +182,7 @@
     });
   }
 
-  // 1. 스타일 추가
+  // 1. 스타일 추가 (가운데 정렬 통일)
   const style = document.createElement("style");
   style.textContent = `
     body { margin: 0 !important; background: #f4f6fa !important; }
@@ -251,15 +249,26 @@
     }
     .cp-side-btn:hover { background: #e2e8f0 !important; }
 
-    #cpContent { flex: 1; margin-left: 225px; min-width: 0; padding: 24px; }
-    /* 제작실 내부 가로 겹침 방지 */
-    #cpContent > main { max-width: 1120px !important; margin: 0 auto 18px !important; padding: 0 !important; }
+    #cpContent {
+      flex: 1; margin-left: 225px; min-width: 0; padding: 24px;
+      display: flex; flex-direction: column; align-items: center;
+    }
+    /* 제작실과 수집 패널 모두 동일한 920px 폭과 가운데 정렬 적용 */
+    #cpContent > main {
+      width: 100% !important; max-width: 920px !important;
+      margin: 0 auto 20px !important; padding: 0 !important;
+    }
+    #cpContent > main > * {
+      max-width: 100% !important; margin-left: auto !important; margin-right: auto !important;
+    }
 
     .cp-card {
-      background: #fff; border: 1px solid #e2e8f0; border-radius: 12px;
+      width: 100%; background: #fff; border: 1px solid #e2e8f0; border-radius: 12px;
       padding: 22px; margin-bottom: 18px; box-shadow: 0 1px 3px rgba(0,0,0,0.03);
+      box-sizing: border-box;
     }
     .cp-studio-reg-card { max-width: 920px; margin: 0 auto 20px; border-top: 4px solid #003cb3; }
+    .cp-list-card { max-width: 1200px; margin: 0 auto; }
     .cp-card-head {
       display: flex; justify-content: space-between; align-items: center;
       margin-bottom: 14px; gap: 10px; flex-wrap: wrap;
@@ -446,8 +455,9 @@
   const listView = document.createElement("div");
   listView.id = "cpListView";
   listView.hidden = true;
+  listView.style.width = "100%";
   listView.innerHTML = `
-    <div class="cp-card">
+    <div class="cp-card cp-list-card">
       <div class="cp-card-head">
         <h2 style="margin:0;">📦 등록된 상품 리스트 (<span id="mCount">0</span>개)</h2>
         <div style="display:flex;gap:8px;flex-wrap:wrap;">
@@ -575,8 +585,8 @@
         <div id="${p}MarginResult" class="cp-margin-result">
           <span>쿠팡 수수료: 0원</span>
           <span>예상 부가세: 0원</span>
-          <span>예상 순수익: 0원 (0.0%)</span>
-          <span>부가세 포함 순수익: 0원 (0.0%)</span>
+          <span class="${c1}">예상 순수익: 0원 (0.0%)</span>
+          <span class="${c2}">부가세 포함 순수익: 0원 (0.0%)</span>
         </div>
       </div>
 
@@ -591,13 +601,12 @@
     `;
   }
 
-  // 최상단에 배치되는 'LF몰 정보 수집' 섹션
   const studioRegSection = document.createElement("section");
   studioRegSection.id = "cpStudioRegSection";
   studioRegSection.className = "cp-card cp-studio-reg-card";
   studioRegSection.innerHTML = `
     <div class="cp-card-head">
-      <h2 style="margin:0;">📥 LF몰 정보 수집</h2>
+      <h2 style="margin:0;">📥 이미지 수집 · 상품 정보</h2>
       <button type="button" id="btnSyncFromStudio" class="cp-sub-btn">🔄 확장프로그램 수집값 자동 반영</button>
     </div>
     ${buildFormHTML("s", true)}
@@ -635,7 +644,6 @@
     </div>
   `;
 
-  // 'LF몰 정보 수집'을 맨 위로 올리고 그 아래에 제작실(main) 배치
   content.appendChild(studioRegSection);
   if (studioMain) content.appendChild(studioMain);
   content.appendChild(listView);
@@ -823,7 +831,6 @@
   const studioMarginCtrl = bindMarginCalc("s", true);
   const editMarginCtrl = bindMarginCalc("e", false);
 
-  // 수집된 실측 사이즈표를 상세페이지 사이즈표 입력란에 채워 넣기
   function applyMeasuredSizesToStudio(measuredSizes) {
     if (!measuredSizes?.rows?.length) return;
     const textareas = [...document.querySelectorAll("textarea")].filter(t => !t.id?.startsWith("cp") && !t.id?.match(/^[se](Copy|Tags)/));
@@ -940,7 +947,6 @@
     studioMarginCtrl.update();
   });
 
-  // 3. 인증 및 토큰 자동 갱신
   function updateAuthUI() {
     if (authState?.idToken) {
       loginOverlay.hidden = true;
@@ -1039,7 +1045,6 @@
     }
   });
 
-  // 4. 사이드바 메뉴 전환
   const menuButtons = sidebar.querySelectorAll(".cp-menu-item");
   const titleEl = document.getElementById("cpCurrentTitle");
   const titles = {
@@ -1064,7 +1069,6 @@
 
   menuButtons.forEach(btn => btn.addEventListener("click", () => switchView(btn.dataset.view)));
 
-  // 5. 월별 필터
   function updateMonthOptions() {
     const select = document.getElementById("mMonthFilter");
     const prev = select.value;
@@ -1102,7 +1106,6 @@
     });
   }
 
-  // 6. Firebase CRUD
   async function fetchProducts() {
     const tbody = document.getElementById("mTableBody");
     tbody.innerHTML = `<tr><td colspan="10" style="text-align:center;padding:30px;">데이터 불러오는 중...</td></tr>`;
@@ -1248,7 +1251,6 @@
     fetchProducts();
   }
 
-  // 7. 쿠팡 V4.6 일괄등록 엑셀 다운로드
   document.getElementById("btnExportExcel").addEventListener("click", async () => {
     const list = getFilteredProducts();
     if (!list.length) return alert("다운로드할 상품이 없습니다.");
@@ -1351,7 +1353,6 @@
     }
   });
 
-  // 8. 수정 모달
   function openEditModal(p) {
     editingId = p.id;
     document.getElementById("eUploadDate").value = p.uploadDate || formatDate();
@@ -1415,7 +1416,6 @@
     }
   });
 
-  // 9. 통합 저장
   async function saveFromStudioCombined() {
     const ext = await readStudioAndExtensionData();
     const panelName = document.getElementById("sName").value.trim();
@@ -1479,7 +1479,6 @@
   document.getElementById("mFilter").addEventListener("change", renderList);
   document.getElementById("mSearch").addEventListener("input", renderList);
 
-  // 10. 테이블 렌더링
   function renderList() {
     const filtered = getFilteredProducts();
     const tbody = document.getElementById("mTableBody");
