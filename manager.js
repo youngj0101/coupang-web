@@ -62,6 +62,8 @@
   let products = [];
   let editingId = null;
   let authState = loadAuth();
+  let latestMeasuredSizes = null;
+  let latestMaterialText = "";
 
   function loadAuth() {
     try { return JSON.parse(localStorage.getItem(AUTH_STORAGE_KEY)) || null; }
@@ -168,7 +170,8 @@
     if (!input || val === undefined || val === null) return;
     const str = String(val).trim();
     if (!str) return;
-    const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, "value")?.set;
+    const proto = input.tagName === "TEXTAREA" ? window.HTMLTextAreaElement.prototype : window.HTMLInputElement.prototype;
+    const setter = Object.getOwnPropertyDescriptor(proto, "value")?.set;
     if (setter) setter.call(input, str);
     else input.value = str;
     input.dispatchEvent(new Event("input", { bubbles: true }));
@@ -176,11 +179,22 @@
   }
 
   function cleanUnwantedUI() {
-    document.querySelectorAll("div, footer, nav, section, aside, label, h2, h3, h4, p, button, select").forEach(el => {
+    // 1) 기존 남성/숏패딩 선택 박스(#lfGender, #lfSizeKind, #lfFillSize) 숨김
+    ["#lfGender", "#lfSizeKind", "#lfFillSize"].forEach(sel => {
+      const el = document.querySelector(sel);
+      if (el) {
+        el.style.setProperty("display", "none", "important");
+        const box = el.closest("div[style*='background']");
+        if (box) box.style.setProperty("display", "none", "important");
+      }
+    });
+
+    // 2) 사이즈표 제목 변경 및 불필요 선택란/안내문 숨김
+    document.querySelectorAll("div, footer, nav, section, aside, label, h1, h2, h3, h4, p, b, strong, small, button, select").forEach(el => {
       if (el.id?.startsWith("cp") || el.closest("#cpTopBar, #cpSidebar, #cpEditModal, #cpLoginOverlay, #cpStudioRegSection")) return;
       if (el.querySelector("#lfReceived, #btnMakeAll, .cp-card")) return;
 
-      const txt = (el.innerText || "").replace(/\s+/g, " ").trim();
+      const txt = (el.innerText || el.textContent || "").replace(/\s+/g, " ").trim();
       if (txt === "상세페이지 제작" && el.children.length <= 2) {
         el.style.setProperty("display", "none", "important");
       }
@@ -189,85 +203,119 @@
         el.textContent = txt.replace(/남성\s*숏패딩\s*기본\s*사이즈표/g, "상세페이지 사이즈표");
       }
 
-      if (el.tagName === "SELECT") {
-        const optsText = [...el.options].map(o => (o.textContent || "").trim()).join(" ");
-        if (/남성.*여성|숏패딩.*롱패딩|니트.*셔츠/.test(optsText) && optsText.length < 120) {
-          el.style.setProperty("display", "none", "important");
-        }
-      }
-      if (el.tagName === "BUTTON" && /선택한\s*기본표\s*적용/.test(txt)) {
+      if (el.tagName === "SELECT" && (el.id === "lfGender" || el.id === "lfSizeKind" || /남성.*여성|숏패딩.*롱패딩|카라 긴팔 티셔츠/.test(txt))) {
         el.style.setProperty("display", "none", "important");
       }
-      if (/기본값은\s*수정할\s*수\s*있으며\s*실제\s*상품\s*실측표/.test(txt) && txt.length < 140) {
+      if (el.tagName === "BUTTON" && (el.id === "lfFillSize" || /선택한\s*기본표\s*적용/.test(txt))) {
+        el.style.setProperty("display", "none", "important");
+      }
+      if (/기본값은\s*수정할\s*수\s*있으며\s*실제\s*상품\s*실측표/.test(txt) && txt.length < 150) {
         el.style.setProperty("display", "none", "important");
       }
     });
   }
 
-  function applyMeasuredSizesToStudio(measuredSizes) {
-    cleanUnwantedUI();
-    if (!measuredSizes?.rows?.length) return;
-
-    const addRowBtn = [...document.querySelectorAll("button")].find(b =>
-      !b.id?.startsWith("cp") && /사이즈\s*한\s*줄\s*추가/.test((b.innerText || "").trim())
+  function findSizeTableContainer() {
+    const addBtn = [...document.querySelectorAll("button")].find(b =>
+      !b.id?.startsWith("cp") &&
+      !b.closest("#cpStudioRegSection, #cpEditModal") &&
+      /사이즈\s*한\s*줄\s*추가/.test((b.innerText || "").replace(/\s+/g, " ").trim())
     );
-    const sizeBox = addRowBtn?.parentElement;
-    if (!sizeBox) return;
-
-    const rows = measuredSizes.rows;
-    const rowInputs = [...sizeBox.querySelectorAll("input")];
-    const firstRow = [...sizeBox.querySelectorAll("tr, [class*='row'], [class*='Row']")].find(r =>
-      r.querySelectorAll("input").length >= 4
-    );
-    const colsPerRow = firstRow ? firstRow.querySelectorAll("input").length : 5;
-
-    let currentRows = [...sizeBox.querySelectorAll("tr, [class*='row'], [class*='Row']")].filter(r =>
-      r.querySelectorAll("input").length >= 4
-    );
-
-    if (!currentRows.length && rowInputs.length >= colsPerRow) {
-      for (let i = 0; i + colsPerRow <= rowInputs.length; i += colsPerRow) {
-        currentRows.push({ querySelectorAll: () => rowInputs.slice(i, i + colsPerRow) });
+    if (addBtn) {
+      let cur = addBtn.parentElement;
+      for (let i = 0; i < 4 && cur; i++) {
+        if (cur.querySelectorAll("input").length >= 4) return { container: cur, addBtn };
+        cur = cur.parentElement;
       }
     }
 
-    while (currentRows.length < rows.length && addRowBtn) {
-      addRowBtn.click();
-      currentRows = [...sizeBox.querySelectorAll("tr, [class*='row'], [class*='Row']")].filter(r =>
-        r.querySelectorAll("input").length >= 4
-      );
+    const headerMatch = [...document.querySelectorAll("div, section, table")].find(el => {
+      if (el.id?.startsWith("cp") || el.closest("#cpStudioRegSection, #cpEditModal")) return false;
+      const t = (el.innerText || "").replace(/\s+/g, " ");
+      return /총\s*길이/.test(t) && /어깨너비/.test(t) && /가슴둘레/.test(t) && el.querySelectorAll("input").length >= 4;
+    });
+    return { container: headerMatch || null, addBtn: addBtn || null };
+  }
+
+  function applyMeasuredSizesToStudio(measuredSizes) {
+    cleanUnwantedUI();
+    if (measuredSizes?.rows?.length) latestMeasuredSizes = measuredSizes;
+    const data = measuredSizes?.rows?.length ? measuredSizes : latestMeasuredSizes;
+    if (!data?.rows?.length) return;
+
+    const { container, addBtn } = findSizeTableContainer();
+    if (!container) return;
+
+    const getRowGroups = () => {
+      const trs = [...container.querySelectorAll("tr")].filter(tr => tr.querySelectorAll("input").length >= 4);
+      if (trs.length) return trs.map(tr => [...tr.querySelectorAll("input")]);
+
+      const rowDivs = [...container.querySelectorAll("div")].filter(d => {
+        const inps = d.querySelectorAll("input");
+        return inps.length >= 4 && inps.length <= 6 && ![...d.querySelectorAll("div")].some(sub => sub.querySelectorAll("input").length >= 4);
+      });
+      if (rowDivs.length) return rowDivs.map(d => [...d.querySelectorAll("input")]);
+
+      const allInps = [...container.querySelectorAll("input")];
+      const groups = [];
+      for (let i = 0; i + 4 <= allInps.length; i += 5) {
+        groups.push(allInps.slice(i, i + 5));
+      }
+      return groups;
+    };
+
+    let groups = getRowGroups();
+    let guard = 0;
+    while (groups.length < data.rows.length && addBtn && guard < 20) {
+      addBtn.click();
+      groups = getRowGroups();
+      guard++;
     }
 
-    rows.forEach((r, idx) => {
-      const targetRow = currentRows[idx];
-      if (!targetRow) return;
-      const inputs = [...targetRow.querySelectorAll("input")];
+    data.rows.forEach((r, idx) => {
+      const rowInputs = groups[idx];
+      if (!rowInputs) return;
       const vals = [r.size, r.totalLength, r.shoulder, r.chest, r.sleeve];
-      inputs.forEach((inp, cIdx) => {
-        if (vals[cIdx] !== undefined && vals[cIdx] !== "") {
-          setNativeInputValue(inp, vals[cIdx]);
+      vals.forEach((v, cIdx) => {
+        if (rowInputs[cIdx] && v !== undefined && v !== "") {
+          setNativeInputValue(rowInputs[cIdx], v);
         }
       });
     });
   }
 
   function applyFabricMaterialToStudio(materialText) {
-    if (!materialText) return;
-    const labels = [...document.querySelectorAll("label, span, div, p")].filter(el =>
+    if (materialText) latestMaterialText = materialText;
+    const text = materialText || latestMaterialText;
+    if (!text) return;
+
+    const labels = [...document.querySelectorAll("label, span, div, p, b, strong")].filter(el =>
       !el.id?.startsWith("cp") &&
       !el.closest("#cpStudioRegSection, #cpEditModal") &&
       el.children.length <= 2 &&
-      /확인한\s*소재\s*및\s*혼용률/.test((el.innerText || "").trim())
+      /확인한\s*소재\s*및\s*혼용률/.test((el.innerText || el.textContent || "").replace(/\s+/g, " ").trim())
     );
+
     for (const lbl of labels) {
-      const container = lbl.closest("div") || lbl.parentElement;
-      const inp = container?.querySelector("input, textarea") || lbl.nextElementSibling?.querySelector?.("input, textarea");
-      if (inp) {
-        setNativeInputValue(inp, materialText);
-        break;
+      let cur = lbl.parentElement;
+      for (let i = 0; i < 4 && cur; i++) {
+        const inp = cur.querySelector("input, textarea");
+        if (inp) {
+          setNativeInputValue(inp, text);
+          return;
+        }
+        cur = cur.parentElement;
       }
     }
   }
+
+  // 제작실 내부가 늦게 렌더되는 경우에도 실측 사이즈·소재가 빠지지 않게 보완
+  const studioObserver = new MutationObserver(() => {
+    cleanUnwantedUI();
+    if (latestMeasuredSizes?.rows?.length) applyMeasuredSizesToStudio(latestMeasuredSizes);
+    if (latestMaterialText) applyFabricMaterialToStudio(latestMaterialText);
+  });
+  studioObserver.observe(document.documentElement, { childList: true, subtree: true });
 
   const style = document.createElement("style");
   style.textContent = `
