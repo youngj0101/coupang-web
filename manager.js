@@ -62,9 +62,23 @@
   let products = [];
   let editingId = null;
   let authState = loadAuth();
+  let bridgeMakerData = null;
   let latestMeasuredSizes = null;
   let latestMaterialText = "";
   let initialScrollLocked = false;
+
+  try {
+    const cached = localStorage.getItem("lfMakerDataBridge");
+    if (cached) bridgeMakerData = JSON.parse(cached);
+  } catch {}
+
+  window.addEventListener("message", e => {
+    if (e.data?.type === "LF_MAKER_DATA_SYNC" && e.data.data) {
+      bridgeMakerData = e.data.data;
+      try { localStorage.setItem("lfMakerDataBridge", JSON.stringify(bridgeMakerData)); } catch {}
+      syncFromStudioPanel(false, true);
+    }
+  });
 
   function loadAuth() {
     try { return JSON.parse(localStorage.getItem(AUTH_STORAGE_KEY)) || null; }
@@ -380,7 +394,6 @@
   });
   studioObserver.observe(document.documentElement, { childList: true, subtree: true });
 
-  // 제작실 기본 사이즈표 덮어쓰기를 방지하기 위해 초기 6초간 실측값·소재 유지
   let enforceCount = 0;
   const enforceTimer = setInterval(() => {
     enforceCount++;
@@ -395,7 +408,7 @@
     if (latestMaterialText) {
       applyFabricMaterialToStudio(latestMaterialText);
     }
-    if (enforceCount >= 20) clearInterval(enforceTimer);
+    if (enforceCount >= 25) clearInterval(enforceTimer);
   }, 300);
 
   const style = document.createElement("style");
@@ -870,9 +883,11 @@
   document.body.appendChild(loginOverlay);
 
   cleanUnwantedUI();
+  window.postMessage({ type: "REQUEST_LF_MAKER_DATA" }, "*");
   setTimeout(() => {
     cleanUnwantedUI();
     scrollPageToTop();
+    window.postMessage({ type: "REQUEST_LF_MAKER_DATA" }, "*");
   }, 300);
 
   document.addEventListener("input", e => {
@@ -1056,9 +1071,16 @@
     const firstImg = document.querySelector("#lfReceived img")?.src || "";
     const generatedAssets = readGeneratedStudioAssets();
 
-    const storageData = (typeof chrome !== "undefined" && chrome.storage)
-      ? await new Promise(r => chrome.storage.local.get("lfMakerData", o => r(o.lfMakerData || {})))
-      : {};
+    let storageData = bridgeMakerData || {};
+    if (!Object.keys(storageData).length && typeof chrome !== "undefined" && chrome.storage?.local) {
+      storageData = await new Promise(r => chrome.storage.local.get("lfMakerData", o => r(o.lfMakerData || {})));
+    }
+    if (!Object.keys(storageData).length) {
+      try {
+        const cached = localStorage.getItem("lfMakerDataBridge");
+        if (cached) storageData = JSON.parse(cached);
+      } catch {}
+    }
 
     const defaultName = [brand, kind, code].filter(Boolean).join(" ") || storageData.lfName || storageData.title || "";
     const collectedOptions = (Array.isArray(storageData.options) && storageData.options.length)
@@ -1106,6 +1128,7 @@
 
   async function syncFromStudioPanel(showToast = true, overwrite = false) {
     cleanUnwantedUI();
+    window.postMessage({ type: "REQUEST_LF_MAKER_DATA" }, "*");
     const d = await readStudioAndExtensionData();
     if (d.brand && (overwrite || !document.getElementById("sBrand").value)) {
       document.getElementById("sBrand").value = d.brand;
@@ -1157,14 +1180,6 @@
   }
 
   document.getElementById("btnSyncFromStudio").addEventListener("click", () => syncFromStudioPanel(true, true));
-
-  if (typeof chrome !== "undefined" && chrome.storage?.onChanged) {
-    chrome.storage.onChanged.addListener((changes, area) => {
-      if (area === "local" && changes.lfMakerData?.newValue) {
-        syncFromStudioPanel(false, true);
-      }
-    });
-  }
 
   document.getElementById("btnResetStudioReg").addEventListener("click", () => {
     ["sBrand", "sName", "sLfName", "sTags", "sSourceUrl", "sThumbUrl", "sDetailImgUrl", "sDiscountPrice", "sPrice", "sRegularPrice", "sCopy"]
