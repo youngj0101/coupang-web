@@ -2,13 +2,16 @@
   if (window.__CP_MANAGER_LOADED__) return;
   window.__CP_MANAGER_LOADED__ = true;
 
+  // =========================================================================
+  // 1) 설정 및 상수 (CONFIG)
+  // =========================================================================
   const PROJECT_ID = "coupang-auto-9f7f0";
   const API_KEY = "AIzaSyDaySX9tYRXdftu7TGEdb5kG-nv44OqS90";
   const BASE_URL = `https://firestore.googleapis.com/v1/projects/${PROJECT_ID}/databases/(default)/documents/products`;
   const AUTH_URL = `https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=${API_KEY}`;
   const REFRESH_URL = `https://securetoken.googleapis.com/v1/token?key=${API_KEY}`;
   const AUTH_STORAGE_KEY = "cp_team_auth_v1";
-  const COLLECT_ARCHIVE_KEY = "cp_collected_archive_v1";
+  const COLLECT_ARCHIVE_KEY = "cp_collected_archive_v2";
 
   const DEFAULT_FEE_RATE = 11.55;
   const DEFAULT_SHIPPING = 0;
@@ -61,9 +64,9 @@
   ];
 
   const WORKFLOW_STEPS = [
-    { step: 1, title: "상품 수집", sub: "LF몰 수집 데이터 보관함", status: "완료" },
-    { step: 2, title: "상품 제작", sub: "옵션·사이즈표·상세페이지 제작", status: "진행 중" },
-    { step: 3, title: "재고 관리", sub: "상품 리스트 재고·상태 관리", status: "대기" }
+    { step: 1, title: "상품 수집", sub: "LF몰 후보 상품 수집·보관", view: "collect" },
+    { step: 2, title: "상품 제작", sub: "상세페이지·옵션·사이즈표 제작", view: "studio" },
+    { step: 3, title: "재고 관리", sub: "판매 상태·재고·변동 이력", view: "list" }
   ];
 
   let products = [];
@@ -77,9 +80,10 @@
   let latestDetailDataUrl = "";
   let currentView = "studio";
   let activeStep = 2;
-  let inspectIndex = 0;
-  let selectedInspectColor = "";
 
+  // =========================================================================
+  // 2) 수집 보관소 & 유틸리티 (ARCHIVE & UTILS)
+  // =========================================================================
   function loadCollectedArchive() {
     try { return JSON.parse(localStorage.getItem(COLLECT_ARCHIVE_KEY)) || []; }
     catch { return []; }
@@ -90,46 +94,56 @@
     try { localStorage.setItem(COLLECT_ARCHIVE_KEY, JSON.stringify(collectedArchive)); } catch {}
   }
 
-  function upsertCollectedSnapshot(raw) {
-    if (!raw || (!raw.lfName && !raw.title && !raw.code && !(raw.items?.length))) return;
-    const cleanName = sanitizeProductTitle(raw.lfName || raw.title || raw.code || "수집 상품");
-    const snap = {
-      id: `${raw.code || "PRD"}_${cleanName}`,
-      stage: "1. 상품 수집",
-      url: raw.url || "",
-      code: raw.code || "",
-      lfName: cleanName,
-      title: cleanName,
-      colors: Array.isArray(raw.colors) ? raw.colors : [],
-      seoTags: Array.isArray(raw.seoTags) ? raw.seoTags : [],
-      thumbUrl: raw.thumbUrl || raw.items?.[0]?.url || "",
-      regularPrice: Number(raw.regularPrice) >= 10000 ? Number(raw.regularPrice) : 0,
-      discountPrice: Number(raw.discountPrice) >= 10000 ? Number(raw.discountPrice) : 0,
-      items: Array.isArray(raw.items) ? raw.items : [],
-      options: Array.isArray(raw.options) ? raw.options : [],
-      measuredSizes: raw.measuredSizes || null,
-      notice: raw.notice || {},
-      savedAt: raw.savedAt || Date.now()
+  function upsertCollectedItem(raw, statusOverride = "수집 성공") {
+    if (!raw) return null;
+    const url = String(raw.url || "").trim();
+    const code = String(raw.code || (url.match(/\/app\/product\/([A-Za-z0-9_-]+)/) || [])[1] || "").trim();
+    const title = sanitizeProductTitle(raw.lfName || raw.title || code || "수집 상품");
+    if (!url && !code && !title) return null;
+
+    const existing = collectedArchive.find(x => (code && x.code === code) || (url && x.url === url));
+    const isDuplicate = !!existing;
+
+    const record = {
+      id: existing?.id || `${code || "ITEM"}_${Date.now()}`,
+      url,
+      code,
+      brand: raw.brand || existing?.brand || extractBrandFromText(title),
+      lfName: title,
+      title,
+      colors: Array.isArray(raw.colors) && raw.colors.length ? raw.colors : (existing?.colors || []),
+      options: Array.isArray(raw.options) && raw.options.length ? raw.options : (existing?.options || []),
+      regularPrice: Number(raw.regularPrice) >= 10000 ? Number(raw.regularPrice) : (existing?.regularPrice || 0),
+      discountPrice: Number(raw.discountPrice) >= 10000 ? Number(raw.discountPrice) : (existing?.discountPrice || 0),
+      notice: raw.notice && Object.values(raw.notice).some(Boolean) ? raw.notice : (existing?.notice || {}),
+      measuredSizes: raw.measuredSizes?.rows?.length ? raw.measuredSizes : (existing?.measuredSizes || null),
+      seoTags: Array.isArray(raw.seoTags) && raw.seoTags.length ? raw.seoTags : (existing?.seoTags || []),
+      thumbUrl: raw.thumbUrl || raw.items?.[0]?.url || existing?.thumbUrl || "",
+      items: Array.isArray(raw.items) && raw.items.length ? raw.items : (existing?.items || []),
+      collectStatus: statusOverride,
+      isDuplicate,
+      collectedAt: Date.now()
     };
-    const next = [snap, ...collectedArchive.filter(x => x.id !== snap.id)].slice(0, 100);
+
+    const next = [record, ...collectedArchive.filter(x => x.id !== record.id)].slice(0, 150);
     saveCollectedArchive(next);
+    return record;
   }
 
   try {
     const cached = localStorage.getItem("lfMakerDataBridge");
     if (cached) {
       bridgeMakerData = JSON.parse(cached);
-      upsertCollectedSnapshot(bridgeMakerData);
+      upsertCollectedItem(bridgeMakerData, "수집 성공");
     }
   } catch {}
 
   window.addEventListener("message", e => {
     if (e.data?.type === "LF_MAKER_DATA_SYNC" && e.data.data) {
       bridgeMakerData = e.data.data;
-      upsertCollectedSnapshot(bridgeMakerData);
-      inspectIndex = 0;
-      selectedInspectColor = "";
+      upsertCollectedItem(bridgeMakerData, "수집 성공");
       try { localStorage.setItem("lfMakerDataBridge", JSON.stringify(bridgeMakerData)); } catch {}
+      if (currentView === "collect") renderCollectView();
       syncFromStudioPanel(false, true);
     }
   });
@@ -153,6 +167,11 @@
   function formatDate(ts) {
     const d = ts ? new Date(ts) : new Date();
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  }
+
+  function formatDateTime(ts) {
+    const d = ts ? new Date(ts) : new Date();
+    return `${formatDate(ts)} ${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
   }
 
   function parseNum(val) {
@@ -200,19 +219,13 @@
       .trim();
   }
 
-  function isNavyColor(colorName) {
-    return /네이비|navy|남색/i.test(String(colorName || "").trim());
+  function extractBrandFromText(text) {
+    const m = String(text || "").match(/(닥스|헤지스|질스튜어트|마에스트로|알레그리|바버|이자벨마랑|빈스|던스트|리복|챔피온|콜마|티엔지티|TNGT|DAKS|HAZZYS)/i);
+    return m ? m[1] : "";
   }
 
-  function getColorHex(colorName) {
-    const c = String(colorName || "").trim().toLowerCase();
-    if (/네이비|navy|남색/.test(c)) return "#1e293b";
-    if (/베이지|beige/.test(c)) return "#e8dcc8";
-    if (/카키|khaki|올리브/.test(c)) return "#556b2f";
-    if (/블랙|검정|black/.test(c)) return "#18181b";
-    if (/화이트|흰색|white/.test(c)) return "#f8fafc";
-    if (/그레이|회색|grey|gray|차콜/.test(c)) return "#64748b";
-    return "#334155";
+  function isNavyColor(colorName) {
+    return /네이비|navy|남색/i.test(String(colorName || "").trim());
   }
 
   function buildSeoTagsFromFields({ name, lfName, code, material, options }) {
@@ -291,28 +304,17 @@
     document.body.scrollTop = 0;
   }
 
-  function cleanUnwantedUI() {
-    if (/다중\s*색상\s*상품\s*제작실/.test(document.title)) {
-      document.title = document.title.replace(/다중\s*색상\s*상품\s*제작실/g, "쿠팡 자동화");
-    }
-    ["#lfGender", "#lfSizeKind", "#lfFillSize"].forEach(sel => {
-      const el = document.querySelector(sel);
-      if (el) {
-        el.style.setProperty("display", "none", "important");
-        const box = el.closest("div[style*='background']");
-        if (box) box.style.setProperty("display", "none", "important");
-      }
-    });
-  }
-
+  // =========================================================================
+  // 3) 기존 제작실 안전 연동 (STUDIO SAFE BRIDGE)
+  // =========================================================================
   function getSizeRowsAndAddBtn() {
     const addBtn = [...document.querySelectorAll("button")].find(b =>
       !b.id?.startsWith("cp") &&
-      !b.closest("#cpStudioRegSection, #cpEditModal, #cpListView, #cpCollectView, #cpInspectWorkbench") &&
+      !b.closest("#cpStudioRegSection, #cpEditModal, #cpListView, #cpCollectView") &&
       /사이즈\s*한\s*줄\s*추가/.test((b.innerText || b.textContent || "").replace(/\s+/g, " ").trim())
     );
     const sizeInputs = [...document.querySelectorAll('input[aria-label="사이즈"]')].filter(
-      inp => !inp.closest("#cpStudioRegSection, #cpEditModal, #cpListView, #cpCollectView, #cpInspectWorkbench")
+      inp => !inp.closest("#cpStudioRegSection, #cpEditModal, #cpListView, #cpCollectView")
     );
     const rows = sizeInputs.map(szInp => {
       const tr = szInp.closest("tr");
@@ -363,7 +365,7 @@
 
     const labels = [...document.querySelectorAll("label, span, div, p, b, strong")].filter(el =>
       !el.id?.startsWith("cp") &&
-      !el.closest("#cpStudioRegSection, #cpEditModal, #cpListView, #cpCollectView, #cpInspectWorkbench") &&
+      !el.closest("#cpStudioRegSection, #cpEditModal, #cpListView, #cpCollectView") &&
       el.children.length <= 2 &&
       /확인한\s*소재\s*및\s*혼용률/.test((el.innerText || el.textContent || "").replace(/\s+/g, " ").trim())
     );
@@ -429,7 +431,7 @@
 
   function findOptionCards() {
     const colorInputs = [...document.querySelectorAll('input[type="text"], input:not([type])')].filter(inp => {
-      if (inp.closest("#cpStudioRegSection, #cpEditModal, #cpListView, #cpCollectView, #cpInspectWorkbench")) return false;
+      if (inp.closest("#cpStudioRegSection, #cpEditModal, #cpListView, #cpCollectView")) return false;
       const ph = inp.placeholder || "";
       const nearText = ((inp.closest("div")?.parentElement?.innerText) || "").replace(/\s+/g, " ");
       return /블랙/.test(ph) || /색상명\s*\(필수\)/.test(nearText);
@@ -461,17 +463,21 @@
     }
   }
 
-  // '#lfReceived' 영역의 이미지를 세로가 아닌 가로 그리드로 렌더링
-  function renderLfReceivedPreview(makerData) {
+  // 0. LF몰에서 받은 이미지: 가로 flex/grid 배치 보장
+  function renderLfReceivedHorizontal(makerData) {
     const lfRec = document.getElementById("lfReceived");
-    if (!lfRec || !Array.isArray(makerData?.items)) return;
-    const list = makerData.items.filter(x => (x?.dataUrl || x?.url) && x.role !== "제외");
-    if (!list.length) return;
-    lfRec.style.setProperty("display", "block", "important");
-    lfRec.style.setProperty("width", "100%", "important");
-    lfRec.innerHTML = `<div class="cp-lf-rec-row">${
-      list.map(x => `<div class="cp-lf-rec-card"><img src="${x.dataUrl || x.url}" alt="수집사진"><div class="cp-lf-rec-cap">${x.color || ""} · ${x.role || ""}</div></div>`).join("")
-    }</div>`;
+    if (!lfRec) return;
+    lfRec.classList.add("cp-lf-rec-horizontal");
+    const items = Array.isArray(makerData?.items)
+      ? makerData.items.filter(x => (x?.dataUrl || x?.url) && x.role !== "제외")
+      : [];
+    if (!items.length) return;
+    lfRec.innerHTML = items.map(x => `
+      <div class="cp-lf-rec-card">
+        <img src="${x.dataUrl || x.url}" alt="수집사진">
+        <div class="cp-lf-rec-cap">${x.color || ""} · ${x.role || ""}</div>
+      </div>
+    `).join("");
   }
 
   async function applyCollectedPhotosToStudio(makerData) {
@@ -479,7 +485,7 @@
     const items = Array.isArray(makerData?.items) ? makerData.items : [];
     if (!items.length) return;
 
-    renderLfReceivedPreview(makerData);
+    renderLfReceivedHorizontal(makerData);
 
     const grouped = [];
     const byColor = new Map();
@@ -564,7 +570,7 @@
     let detailImgUrl = latestDetailDataUrl || "";
 
     const canvases = [...document.querySelectorAll("canvas")].filter(c => {
-      if (c.closest("#cpStudioRegSection, #cpEditModal, #cpListView, #cpCollectView, #cpInspectWorkbench")) return false;
+      if (c.closest("#cpStudioRegSection, #cpEditModal, #cpListView, #cpCollectView")) return false;
       return c.width > 80 && c.height > 80;
     });
 
@@ -588,22 +594,9 @@
     return { thumbUrl, detailImgUrl };
   }
 
-  async function triggerMakeAllAndCaptureAssets() {
-    const nativeMakeBtn = [...document.querySelectorAll("button")].find(b =>
-      !b.id?.startsWith("cp") &&
-      !b.closest("#cpStudioRegSection, #cpEditModal, #cpListView, #cpCollectView, #cpInspectWorkbench") &&
-      /모든\s*색상\s*결과\s*만들기/.test((b.innerText || b.textContent || "").replace(/\s+/g, " ").trim())
-    );
-    if (nativeMakeBtn) {
-      nativeMakeBtn.click();
-      await new Promise(r => setTimeout(r, 800));
-    }
-    const assets = readGeneratedStudioAssets();
-    if (assets.thumbUrl) document.getElementById("sThumbUrl").value = assets.thumbUrl;
-    if (assets.detailImgUrl) document.getElementById("sDetailImgUrl").value = assets.detailImgUrl;
-    return assets;
-  }
-
+  // =========================================================================
+  // 4) 스타일 & 레이아웃 (UI & VIEWS)
+  // =========================================================================
   const style = document.createElement("style");
   style.textContent = `
     body { margin: 0 !important; background: #f3f6f4 !important; color: #111827 !important; }
@@ -625,7 +618,6 @@
       padding: 8px 14px !important; border-radius: 8px !important; font-weight: 700 !important;
       cursor: pointer; font-size: 12.5px !important; margin: 0 !important;
     }
-    .cp-sync-btn:hover { background: #166534 !important; }
     .cp-sub-btn {
       background: #1e293b !important; color: #fff !important; border: none !important;
       padding: 7px 12px !important; border-radius: 7px !important; font-weight: 600 !important;
@@ -637,27 +629,30 @@
       cursor: pointer; font-size: 13px !important; margin: 0 !important;
     }
 
-    /* LF몰에서 받은 이미지 가로 배열 스타일 */
-    .cp-lf-rec-row {
-      display: grid;
-      grid-template-columns: repeat(auto-fill, minmax(126px, 1fr));
-      gap: 10px;
-      margin-top: 10px;
-      width: 100%;
+    /* 0. LF몰에서 받은 이미지 가로 정렬 보장 */
+    #lfReceived, #lfReceived.cp-lf-rec-horizontal {
+      display: flex !important;
+      flex-direction: row !important;
+      flex-wrap: wrap !important;
+      gap: 10px !important;
+      align-items: flex-start !important;
+      width: 100% !important;
     }
-    .cp-lf-rec-card {
-      border: 1px solid #cbd5e1;
-      border-radius: 8px;
-      padding: 6px;
-      background: #ffffff;
-      text-align: center;
+    #lfReceived > div, .cp-lf-rec-card {
+      width: 128px !important;
+      flex: 0 0 128px !important;
+      border: 1px solid #cbd5e1 !important;
+      border-radius: 8px !important;
+      padding: 6px !important;
+      background: #ffffff !important;
+      text-align: center !important;
     }
-    .cp-lf-rec-card img {
+    #lfReceived img, .cp-lf-rec-card img {
       display: block !important;
       width: 100% !important;
-      height: 92px !important;
-      object-fit: cover;
-      border-radius: 5px;
+      height: 96px !important;
+      object-fit: cover !important;
+      border-radius: 5px !important;
     }
     .cp-lf-rec-cap {
       font-size: 11px;
@@ -671,7 +666,7 @@
 
     #cpLayout { display: flex; min-height: 100vh; padding-top: 56px; }
     #cpSidebar {
-      width: 252px; flex-shrink: 0; background: #ffffff;
+      width: 248px; flex-shrink: 0; background: #ffffff;
       border-right: 1px solid #e2e8f0; padding: 18px 14px;
       position: fixed; top: 56px; bottom: 0; left: 0; overflow-y: auto;
       display: flex; flex-direction: column;
@@ -683,7 +678,7 @@
     .cp-progress-track { width: 100%; height: 6px; background: #e2e8f0; border-radius: 999px; overflow: hidden; }
     .cp-progress-fill { height: 100%; background: #15803d; border-radius: 999px; transition: width 0.25s; }
 
-    .cp-step-list { display: flex; flex-direction: column; gap: 5px; }
+    .cp-step-list { display: flex; flex-direction: column; gap: 6px; }
     .cp-step-btn {
       width: 100%; display: flex; align-items: flex-start; gap: 10px;
       text-align: left; padding: 10px !important; border-radius: 9px !important;
@@ -730,27 +725,25 @@
     }
 
     #cpContent {
-      flex: 1; margin-left: 252px; min-width: 0; padding: 24px 26px 48px;
+      flex: 1; margin-left: 248px; min-width: 0; padding: 24px 26px 48px;
       display: flex; flex-direction: column; align-items: center;
     }
-    #cpInspectWorkbench, #cpCollectView { width: 100%; max-width: 1240px; margin: 0 auto 22px; }
-    .cp-wb-breadcrumb { font-size: 12.5px; color: #64748b; margin-bottom: 12px; font-weight: 600; }
+    #cpCollectView { width: 100%; max-width: 1240px; margin: 0 auto 22px; }
     .cp-wb-header-bar { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 16px; }
-    .cp-wb-h1 { margin: 0; font-size: 24px; font-weight: 800; color: #0f172a; }
+    .cp-wb-h1 { margin: 0; font-size: 23px; font-weight: 800; color: #0f172a; }
     .cp-wb-sub { margin: 4px 0 0; font-size: 13.5px; color: #64748b; }
-    .cp-pager-group { display: inline-flex; align-items: center; gap: 6px; }
-    .cp-pager-btn {
-      background: #ffffff !important; color: #334155 !important; border: 1px solid #cbd5e1 !important;
-      width: 34px; height: 34px; border-radius: 8px !important; font-weight: 700 !important;
-      cursor: pointer; margin: 0 !important; padding: 0 !important;
+
+    .cp-url-box {
+      background: #ffffff; border: 1px solid #e2e8f0; border-radius: 12px;
+      padding: 18px; margin-bottom: 18px;
     }
-    .cp-pager-counter {
-      background: #ffffff; border: 1px solid #e2e8f0; border-radius: 8px;
-      padding: 7px 12px; font-size: 12.5px; font-weight: 700; color: #1e293b;
+    .cp-url-box textarea {
+      width: 100%; padding: 10px !important; border: 1px solid #cbd5e1 !important;
+      border-radius: 8px !important; font-size: 13px !important; box-sizing: border-box;
     }
 
     .cp-collect-grid {
-      display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 14px;
+      display: grid; grid-template-columns: repeat(auto-fill, minmax(290px, 1fr)); gap: 14px;
     }
     .cp-collect-card {
       background: #ffffff; border: 1px solid #e2e8f0; border-radius: 12px;
@@ -765,100 +758,27 @@
     .cp-collect-name { font-size: 13.5px; font-weight: 800; color: #0f172a; line-height: 1.35; word-break: break-word; }
     .cp-collect-sub { font-size: 11.5px; color: #64748b; margin-top: 3px; }
     .cp-collect-price { font-size: 13px; font-weight: 700; color: #0f3d2e; margin-top: 4px; }
+    .cp-collect-badge {
+      display: inline-block; font-size: 11px; font-weight: 700; padding: 2px 7px;
+      border-radius: 6px; margin-bottom: 4px;
+    }
+    .badge-ok { background: #dcfce7; color: #15803d; }
+    .badge-dup { background: #fef3c7; color: #b45309; }
     .cp-collect-photos-strip { display: flex; gap: 5px; overflow-x: auto; padding-bottom: 2px; }
     .cp-collect-photos-strip img {
       width: 42px; height: 52px; object-fit: cover; border-radius: 5px;
       border: 1px solid #cbd5e1; flex-shrink: 0;
     }
-    .cp-collect-actions { display: flex; gap: 6px; justify-content: flex-end; margin-top: auto; }
+    .cp-collect-actions { display: flex; gap: 6px; justify-content: flex-end; margin-top: auto; flex-wrap: wrap; }
     .cp-load-btn {
       background: #0f3d2e !important; color: #fff !important; border: none !important;
       padding: 7px 12px !important; border-radius: 7px !important; font-size: 12px !important;
       font-weight: 700 !important; cursor: pointer; margin: 0 !important;
     }
 
-    .cp-detail-main-card {
-      background: #ffffff; border: 1px solid #e2e8f0; border-radius: 14px;
-      padding: 22px; box-shadow: 0 1px 3px rgba(15, 23, 42, 0.04);
-    }
-    .cp-prd-top-grid { display: grid; grid-template-columns: 270px minmax(0, 1fr); gap: 22px; align-items: start; }
-    @media (max-width: 780px) { .cp-prd-top-grid { grid-template-columns: 1fr; } }
-    .cp-main-photo-box {
-      border: 1px solid #e2e8f0; border-radius: 12px; background: #f8fafc;
-      aspect-ratio: 1 / 1.15; overflow: hidden; display: flex; align-items: center; justify-content: center;
-    }
-    .cp-main-photo-box img { width: 100%; height: 100%; object-fit: cover; }
-    .cp-thumb-strip { display: flex; gap: 7px; margin-top: 10px; flex-wrap: wrap; align-items: center; }
-    .cp-strip-item {
-      width: 44px; height: 52px; border-radius: 7px; border: 1.5px solid #cbd5e1;
-      overflow: hidden; cursor: pointer; background: #fff; padding: 0 !important; margin: 0 !important;
-    }
-    .cp-strip-item.active { border-color: #15803d; box-shadow: 0 0 0 2px #dcfce7; }
-    .cp-strip-item img { width: 100%; height: 100%; object-fit: cover; display: block; }
-    .cp-strip-more {
-      width: 44px; height: 52px; border-radius: 7px; background: #f1f5f9;
-      border: 1px solid #cbd5e1; display: inline-flex; align-items: center; justify-content: center;
-      font-size: 12px; font-weight: 800; color: #475569;
-    }
-    .cp-brand-pill {
-      display: inline-block; background: #f1f5f9; color: #475569;
-      font-size: 12px; font-weight: 700; padding: 3px 9px; border-radius: 6px; margin-bottom: 6px;
-    }
-    .cp-prd-title-lg { margin: 0 0 14px; font-size: 20px; font-weight: 800; color: #0f172a; line-height: 1.35; }
-    .cp-color-chips-wrap { display: flex; gap: 8px; flex-wrap: wrap; margin: 8px 0 14px; }
-    .cp-color-chip {
-      display: inline-flex; align-items: center; gap: 7px;
-      padding: 7px 13px !important; border-radius: 999px !important;
-      border: 1.5px solid #cbd5e1 !important; background: #ffffff !important;
-      color: #1e293b !important; font-size: 12.5px !important; font-weight: 700 !important;
-      cursor: pointer; margin: 0 !important;
-    }
-    .cp-color-chip.selected { background: #0f3d2e !important; color: #ffffff !important; border-color: #0f3d2e !important; }
-    .cp-color-dot { width: 10px; height: 10px; border-radius: 999px; border: 1px solid rgba(0,0,0,0.15); }
-    .cp-opt-stock-table { width: 100%; border-collapse: collapse; font-size: 12.5px; margin-top: 6px; }
-    .cp-opt-stock-table th {
-      background: #f8fafc; color: #475569; font-weight: 700; padding: 8px 10px;
-      border-bottom: 1px solid #e2e8f0; text-align: left;
-    }
-    .cp-opt-stock-table td { padding: 8px 10px; border-bottom: 1px solid #f1f5f9; color: #1e293b; font-weight: 600; }
-
-    .cp-cat-rec-section { margin-top: 20px; padding-top: 18px; border-top: 1px solid #e2e8f0; }
-    .cp-cat-rec-title { font-size: 15px; font-weight: 800; color: #0f172a; margin-bottom: 6px; }
-    .cp-cat-cards-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-top: 12px; }
-    @media (max-width: 780px) { .cp-cat-cards-grid { grid-template-columns: 1fr; } }
-    .cp-cat-card {
-      background: #ffffff; border: 1.5px solid #e2e8f0; border-radius: 12px;
-      padding: 14px; cursor: pointer; text-align: left; position: relative;
-      transition: 0.15s; margin: 0 !important; display: block; width: 100%;
-    }
-    .cp-cat-card.selected { border-color: #15803d; background: #f0fdf4; }
-    .cp-cat-score { font-size: 12px; font-weight: 800; color: #15803d; margin-bottom: 6px; }
-    .cp-cat-path { font-size: 13px; font-weight: 700; color: #0f172a; line-height: 1.45; }
-    .cp-cat-check {
-      position: absolute; top: 10px; right: 10px; width: 20px; height: 20px;
-      border-radius: 999px; background: #15803d; color: #fff;
-      display: inline-flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 800;
-    }
-
-    .cp-wb-footer-actions {
-      display: flex; justify-content: space-between; align-items: center;
-      gap: 12px; flex-wrap: wrap; margin-top: 16px;
-    }
-    .cp-prev-step-btn {
-      background: #ffffff !important; color: #334155 !important; border: 1px solid #cbd5e1 !important;
-      padding: 10px 18px !important; border-radius: 9px !important; font-weight: 700 !important;
-      font-size: 13.5px !important; cursor: pointer; margin: 0 !important;
-    }
-    .cp-next-step-btn {
-      background: #0f3d2e !important; color: #ffffff !important; border: none !important;
-      padding: 11px 22px !important; border-radius: 9px !important; font-weight: 800 !important;
-      font-size: 13.5px !important; cursor: pointer; margin: 0 !important;
-    }
-
     #cpContent > main {
-      width: 100% !important; max-width: 1240px !important;
+      width: 100% !important; max-width: 960px !important;
       margin: 0 auto 20px !important; padding: 0 !important;
-      visibility: visible !important; opacity: 1 !important;
     }
     #cpContent > main > * { max-width: 100% !important; margin-left: auto !important; margin-right: auto !important; }
 
@@ -867,7 +787,7 @@
       padding: 22px; margin-bottom: 18px; box-shadow: 0 1px 3px rgba(0,0,0,0.03);
       box-sizing: border-box;
     }
-    .cp-studio-reg-card { max-width: 1240px; margin: 0 auto 20px; border-top: 4px solid #0f3d2e; }
+    .cp-studio-reg-card { max-width: 960px; margin: 0 auto 20px; border-top: 4px solid #0f3d2e; }
     .cp-list-card { max-width: 1240px; margin: 0 auto; }
     .cp-card-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; gap: 10px; flex-wrap: wrap; }
     .cp-grid-2 { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; margin-bottom: 10px; }
@@ -913,7 +833,7 @@
     .cp-tag-count { font-size: 11.5px; font-weight: 700; color: #0f3d2e; margin-left: 6px; }
     .cp-tag-count.over { color: #dc2626; }
     .cp-table-wrap { width: 100%; overflow-x: auto; }
-    .cp-table { width: 100%; border-collapse: collapse; font-size: 13px; min-width: 1120px; }
+    .cp-table { width: 100%; border-collapse: collapse; font-size: 13px; min-width: 1180px; }
     .cp-table th, .cp-table td { padding: 11px 8px; border-bottom: 1px solid #e5e7eb; text-align: left; vertical-align: middle; }
     .cp-table th { background: #f8fafc; color: #334155; font-weight: 700; white-space: nowrap; }
     .cp-num-col { text-align: center !important; color: #64748b; font-weight: 700; }
@@ -964,6 +884,7 @@
   const layout = document.createElement("div");
   layout.id = "cpLayout";
 
+  // 바로가기에서 '상품 제작실' 제거하고 '상품 리스트'만 유지
   const sidebar = document.createElement("aside");
   sidebar.id = "cpSidebar";
   sidebar.innerHTML = `
@@ -997,9 +918,6 @@
   collectView.id = "cpCollectView";
   collectView.hidden = true;
 
-  const inspectWorkbench = document.createElement("section");
-  inspectWorkbench.id = "cpInspectWorkbench";
-
   const listView = document.createElement("div");
   listView.id = "cpListView";
   listView.hidden = true;
@@ -1007,7 +925,7 @@
   listView.innerHTML = `
     <div class="cp-card cp-list-card">
       <div class="cp-card-head">
-        <h2 style="margin:0;">📦 등록된 상품 리스트 (<span id="mCount">0</span>개)</h2>
+        <h2 style="margin:0;">📦 3. 재고 관리 · 상품 리스트 (<span id="mCount">0</span>개)</h2>
         <div style="display:flex;gap:8px;flex-wrap:wrap;">
           <button type="button" id="btnExportExcel" class="cp-excel-btn">📥 쿠팡 일괄등록 엑셀 다운로드</button>
           <button type="button" id="btnRefresh" class="cp-primary-btn">🔄 새로고침</button>
@@ -1017,9 +935,10 @@
         <select id="mMonthFilter"><option value="ALL">전체 월 보기</option></select>
         <select id="mFilter">
           <option value="ALL">전체 상태 보기</option>
-          <option value="1. 상품 수집">1. 상품 수집</option>
-          <option value="2. 상품 제작">2. 상품 제작</option>
-          <option value="3. 재고 관리">3. 재고 관리</option>
+          <option value="판매 중">판매 중</option>
+          <option value="품절">품절</option>
+          <option value="확인 필요">확인 필요</option>
+          <option value="상품 종료">상품 종료</option>
         </select>
         <input id="mSearch" type="text" placeholder="상품명, 품번, 태그 검색...">
       </div>
@@ -1037,7 +956,7 @@
               <th style="width:94px;text-align:right;">최대혜택가(소싱)</th>
               <th style="width:100px;text-align:right;">쿠팡 판매가</th>
               <th style="width:90px;text-align:right;">정가</th>
-              <th style="width:132px;">상태</th>
+              <th style="width:126px;">판매 상태</th>
               <th style="width:98px;">관리</th>
             </tr>
           </thead>
@@ -1058,11 +977,12 @@
       <div class="cp-grid-3">
         <label class="cp-field-label">업로드 날짜<input id="${p}UploadDate" type="date" value="${formatDate()}"></label>
         <label class="cp-field-label">브랜드<input id="${p}Brand" type="text" placeholder="예: 닥스"></label>
-        <label class="cp-field-label">진행 상태
+        <label class="cp-field-label">판매 상태
           <select id="${p}Status">
-            <option value="1. 상품 수집">1. 상품 수집</option>
-            <option value="2. 상품 제작" ${isStudio ? "selected" : ""}>2. 상품 제작</option>
-            <option value="3. 재고 관리">3. 재고 관리</option>
+            <option value="판매 중" ${isStudio ? "selected" : ""}>판매 중</option>
+            <option value="품절">품절</option>
+            <option value="확인 필요">확인 필요</option>
+            <option value="상품 종료">상품 종료</option>
           </select>
         </label>
       </div>
@@ -1128,8 +1048,8 @@
         <div class="cp-notice-grid">${noticeInputs}</div>
       </details>
 
-      <label class="cp-field-label">상세페이지 문구 / 메모
-        <textarea id="${p}Copy" rows="3" placeholder="CHECK POINT 문구나 메모를 입력하세요"></textarea>
+      <label class="cp-field-label">상세페이지 문구 / 변경 이력 메모
+        <textarea id="${p}Copy" rows="3" placeholder="CHECK POINT 문구나 재고/가격 변경 이력을 입력하세요"></textarea>
       </label>
     `;
   }
@@ -1139,13 +1059,13 @@
   studioRegSection.className = "cp-card cp-studio-reg-card";
   studioRegSection.innerHTML = `
     <div class="cp-card-head">
-      <h2 style="margin:0;">📥 상품 제작 폼</h2>
-      <button type="button" id="btnSyncFromStudio" class="cp-sub-btn">🔄 1. 상품 수집 데이터 반영</button>
+      <h2 style="margin:0;">📥 2. 상품 제작 정보</h2>
+      <button type="button" id="btnSyncFromStudio" class="cp-sub-btn">🔄 1. 상품 수집값 자동 반영</button>
     </div>
     ${buildFormHTML("s", true)}
     <div style="display:flex;justify-content:flex-end;gap:10px;margin-top:10px;">
       <button type="button" id="btnResetStudioReg" class="cp-cancel-btn">입력 초기화</button>
-      <button type="button" id="btnSaveFromStudioSection" class="cp-primary-btn">☁️ 상품 리스트에 저장하기</button>
+      <button type="button" id="btnSaveFromStudioSection" class="cp-primary-btn">☁️ 완성 결과 저장 (3. 재고 관리로)</button>
     </div>
   `;
 
@@ -1154,7 +1074,7 @@
   editModal.hidden = true;
   editModal.innerHTML = `
     <div class="cp-modal-box">
-      <h3>✏️ 상품 정보 수정</h3>
+      <h3>✏️ 상품 정보 · 변경 이력 수정</h3>
       ${buildFormHTML("e", false)}
       <div class="cp-modal-footer">
         <button type="button" id="btnCancelEdit" class="cp-cancel-btn">취소</button>
@@ -1178,7 +1098,6 @@
   `;
 
   content.appendChild(collectView);
-  content.appendChild(inspectWorkbench);
   content.appendChild(studioRegSection);
   if (studioMain) content.appendChild(studioMain);
   content.appendChild(listView);
@@ -1190,7 +1109,10 @@
   document.body.appendChild(editModal);
   document.body.appendChild(loginOverlay);
 
-  function renderCollectArchiveView() {
+  // =========================================================================
+  // 5) 1. 상품 수집 전용 뷰 (별도 보관소 관리)
+  // =========================================================================
+  function renderCollectView() {
     if (currentView !== "collect") {
       collectView.hidden = true;
       return;
@@ -1199,29 +1121,41 @@
     document.getElementById("cpCurrentTitle").textContent = "1. 상품 수집";
 
     collectView.innerHTML = `
-      <div class="cp-wb-breadcrumb">🏠 쿠팡 자동화 &gt; 1. 상품 수집 보관함</div>
       <div class="cp-wb-header-bar">
         <div>
-          <h1 class="cp-wb-h1">1. 상품 수집</h1>
-          <p class="cp-wb-sub">LF몰 확장 프로그램으로 수집한 상품이 계속 보관됩니다. (상품 리스트와 별도 보관)</p>
+          <h1 class="cp-wb-h1">1. 상품 수집 (${collectedArchive.length}건 보관중)</h1>
+          <p class="cp-wb-sub">LF몰에서 수집한 판매 후보 상품을 별도로 보관합니다. (상품 리스트와 분리 보관)</p>
         </div>
-        <button type="button" class="cp-sub-btn" id="btnClearCollectArchive">보관함 전체 비우기</button>
+        <button type="button" class="cp-sub-btn" id="btnClearCollectArchive">수집 보관함 비우기</button>
       </div>
+
+      <div class="cp-url-box">
+        <div style="font-size:13px;font-weight:700;color:#0f172a;margin-bottom:6px;">🔗 LF몰 URL 단건 / 일괄 등록 (줄바꿈으로 여러 URL 입력 가능)</div>
+        <textarea id="cpBulkUrlsInput" rows="2" placeholder="https://www.lfmall.co.kr/app/product/DMJU5D041N2&#10;https://www.lfmall.co.kr/app/product/..."></textarea>
+        <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:8px;">
+          <button type="button" class="cp-primary-btn" id="btnAddUrlsToCollect">+ URL 후보 추가 및 중복 확인</button>
+        </div>
+      </div>
+
       ${collectedArchive.length ? `
         <div class="cp-collect-grid">
           ${collectedArchive.map((item, idx) => {
             const thumbs = (item.items || []).filter(i => i?.dataUrl || i?.url).slice(0, 5);
             const mainThumb = thumbs[0]?.dataUrl || thumbs[0]?.url || item.thumbUrl || "";
             const sizesTxt = [...new Set((item.options || []).map(o => o.size).filter(Boolean))].join(", ") || "-";
+            const stockSum = (item.options || []).reduce((s, o) => s + clampStock(o.stock ?? MAX_STOCK), 0);
             const colorsTxt = (item.colors || []).join(", ") || "-";
             return `
               <article class="cp-collect-card">
+                <div>
+                  <span class="cp-collect-badge ${item.isDuplicate ? "badge-dup" : "badge-ok"}">${item.isDuplicate ? "중복 상품 갱신" : (item.collectStatus || "수집 성공")}</span>
+                </div>
                 <div class="cp-collect-top">
                   ${mainThumb ? `<img src="${mainThumb}" class="cp-collect-thumb" alt="수집 썸네일">` : `<div class="cp-collect-thumb"></div>`}
                   <div class="cp-collect-meta">
                     <div class="cp-collect-name">${item.title || item.lfName || "수집 상품"}</div>
                     <div class="cp-collect-sub">품번: ${item.code || "-"} · 색상: ${colorsTxt}</div>
-                    <div class="cp-collect-sub">사이즈: ${sizesTxt} · 사진: ${(item.items || []).length}장</div>
+                    <div class="cp-collect-sub">사이즈: ${sizesTxt} · 재고합계: ${stockSum}개</div>
                     <div class="cp-collect-price">최대혜택가 ${formatWon(item.discountPrice)} / 정가 ${formatWon(item.regularPrice)}</div>
                   </div>
                 </div>
@@ -1231,8 +1165,9 @@
                   </div>
                 ` : ""}
                 <div class="cp-collect-actions">
-                  ${item.url ? `<a href="${item.url}" target="_blank" class="cp-link-btn">LF몰 링크 ↗</a>` : ""}
-                  <button type="button" class="cp-load-btn" data-idx="${idx}">2. 상품 제작으로 불러오기 →</button>
+                  ${item.url ? `<a href="${item.url}" target="_blank" class="cp-link-btn">LF몰 열기 ↗</a>` : ""}
+                  <button type="button" class="cp-del-btn" data-del-idx="${idx}">삭제</button>
+                  <button type="button" class="cp-load-btn" data-idx="${idx}">2. 상품 제작으로 보내기 →</button>
                 </div>
               </article>
             `;
@@ -1240,10 +1175,21 @@
         </div>
       ` : `
         <div class="cp-card" style="text-align:center;color:#64748b;padding:36px;">
-          아직 보관된 수집 상품이 없습니다. LF몰에서 확장 프로그램으로 <strong>이미지 수집</strong>을 진행해 주세요.
+          보관된 수집 상품이 없습니다. LF몰 페이지에서 <strong>이미지 수집</strong>을 누르거나 위 입력칸에 LF몰 URL을 추가해 주세요.
         </div>
       `}
     `;
+
+    document.getElementById("btnAddUrlsToCollect")?.addEventListener("click", () => {
+      const raw = document.getElementById("cpBulkUrlsInput")?.value || "";
+      const lines = raw.split(/\r?\n/).map(s => s.trim()).filter(Boolean);
+      if (!lines.length) return alert("LF몰 상품 URL을 입력해 주세요.");
+      lines.forEach(u => {
+        const code = (u.match(/\/app\/product\/([A-Za-z0-9_-]+)/) || [])[1] || "";
+        upsertCollectedItem({ url: u, code, title: code ? `LF몰 후보 상품 (${code})` : u }, "URL 등록됨");
+      });
+      renderCollectView();
+    });
 
     collectView.querySelectorAll(".cp-load-btn").forEach(btnEl => {
       btnEl.addEventListener("click", async () => {
@@ -1260,10 +1206,19 @@
       });
     });
 
+    collectView.querySelectorAll("[data-del-idx]").forEach(btnEl => {
+      btnEl.addEventListener("click", () => {
+        const idx = Number(btnEl.dataset.delIdx);
+        const next = collectedArchive.filter((_, i) => i !== idx);
+        saveCollectedArchive(next);
+        renderCollectView();
+      });
+    });
+
     document.getElementById("btnClearCollectArchive")?.addEventListener("click", () => {
-      if (!confirm("1. 상품 수집 보관함의 모든 항목을 삭제할까요?")) return;
+      if (!confirm("1. 상품 수집 보관함을 비울까요?")) return;
       saveCollectedArchive([]);
-      renderCollectArchiveView();
+      renderCollectView();
     });
   }
 
@@ -1279,7 +1234,7 @@
       const badgeTxt = state === "done" ? "완료" : state === "active" ? "진행 중" : "대기";
       const icoTxt = state === "done" ? "✓" : String(s.step);
       return `
-        <button type="button" class="cp-step-btn ${state === "active" ? "is-active" : ""}" data-step="${s.step}">
+        <button type="button" class="cp-step-btn ${state === "active" ? "is-active" : ""}" data-step="${s.step}" data-view="${s.view}">
           <span class="cp-step-badge-ico ico-${state}">${icoTxt}</span>
           <span class="cp-step-texts">
             <span class="cp-step-head-row">
@@ -1294,18 +1249,11 @@
 
     listEl.querySelectorAll(".cp-step-btn").forEach(btn => {
       btn.addEventListener("click", () => {
-        const st = Number(btn.dataset.step);
-        activeStep = st;
-        if (st === 1) {
-          currentView = "collect";
-        } else if (st === 2) {
-          currentView = "studio";
-        } else if (st === 3) {
-          currentView = "list";
-          fetchProducts();
-        }
+        activeStep = Number(btn.dataset.step);
+        currentView = btn.dataset.view;
         renderStepSidebar();
         applyViewVisibility();
+        if (currentView === "list") fetchProducts();
         scrollPageToTop();
       });
     });
@@ -1318,193 +1266,24 @@
     const isList = currentView === "list";
 
     collectView.hidden = !isCollect;
-    inspectWorkbench.hidden = !isStudio;
     studioRegSection.style.setProperty("display", isStudio ? "block" : "none", "important");
     if (studioMain) studioMain.style.setProperty("display", isStudio ? "block" : "none", "important");
     listView.hidden = !isList;
 
     if (isCollect) {
       document.getElementById("cpCurrentTitle").textContent = "1. 상품 수집";
-      renderCollectArchiveView();
+      renderCollectView();
     } else if (isStudio) {
       document.getElementById("cpCurrentTitle").textContent = "2. 상품 제작";
-      renderInspectWorkbench();
+      renderLfReceivedHorizontal(bridgeMakerData);
     } else {
       document.getElementById("cpCurrentTitle").textContent = "3. 재고 관리 · 상품 리스트";
     }
   }
 
-  function getInspectionQueue() {
-    const d = bridgeMakerData || {};
-    const items = Array.isArray(d.items) ? d.items.filter(i => (i?.dataUrl || i?.url) && i.role !== "제외") : [];
-    const options = Array.isArray(d.options) ? d.options : [];
-    const colors = Array.isArray(d.colors) && d.colors.length
-      ? d.colors
-      : [...new Set([...items.map(i => i.color), ...options.map(o => o.color)].filter(Boolean))];
-
-    const baseTitle = sanitizeProductTitle(document.getElementById("sName")?.value || d.lfName || d.title || "수집 상품");
-    const brand = document.getElementById("sBrand")?.value.trim() || d.brand || (baseTitle.split(" ")[0] || "브랜드");
-    const cost = parseNum(document.getElementById("sDiscountPrice")?.value) || (Number(d.discountPrice) >= 10000 ? Number(d.discountPrice) : 0);
-    const sale = parseNum(document.getElementById("sPrice")?.value) || (cost ? calcTargetSalePrice(cost) : 0);
-
-    return (colors.length ? colors : ["기본"]).map((col, idx) => {
-      const colPhotos = items.filter(it => (it.color || colors[0]) === col);
-      const colOpts = options.filter(o => (o.color || colors[0]) === col);
-      return {
-        index: idx,
-        total: colors.length || 1,
-        brand,
-        title: `${baseTitle}${col && !baseTitle.includes(col) ? ` (${col})` : ""}`,
-        color: col,
-        colors: colors.length ? colors : ["기본"],
-        photos: colPhotos.length ? colPhotos : items,
-        options: colOpts.length ? colOpts : options,
-        cost,
-        sale
-      };
-    });
-  }
-
-  function renderInspectWorkbench() {
-    if (currentView !== "studio") {
-      inspectWorkbench.hidden = true;
-      return;
-    }
-    inspectWorkbench.hidden = false;
-
-    const queue = getInspectionQueue();
-    if (inspectIndex >= queue.length) inspectIndex = 0;
-    const cur = queue[inspectIndex];
-    const activeCol = selectedInspectColor || cur.color;
-    const displayPhotos = cur.photos.filter(p => !activeCol || !p.color || p.color === activeCol || cur.photos.length <= 8);
-    const photoList = displayPhotos.length ? displayPhotos : cur.photos;
-    const heroPhoto = photoList[0]?.dataUrl || photoList[0]?.url || document.getElementById("sThumbUrl")?.value || "";
-
-    const optRowsHtml = (cur.options.length ? cur.options : [{ color: activeCol, code: "", size: "FREE", stock: MAX_STOCK }])
-      .slice(0, 6)
-      .map(o => `
-        <tr>
-          <td>${o.size || "-"}</td>
-          <td>${clampStock(o.stock ?? MAX_STOCK)}개</td>
-          <td>${formatWon(cur.sale)}</td>
-        </tr>
-      `).join("");
-
-    inspectWorkbench.innerHTML = `
-      <div class="cp-wb-breadcrumb">🏠 쿠팡 자동화 &gt; 2. 상품 제작</div>
-
-      <div class="cp-wb-header-bar">
-        <div>
-          <h1 class="cp-wb-h1">2. 상품 제작</h1>
-          <p class="cp-wb-sub">수집된 상품의 색상·옵션·사진을 확인하고 제작 폼을 채웁니다.</p>
-        </div>
-        <div class="cp-pager-group">
-          <button type="button" class="cp-pager-btn" id="btnPrevInspect">‹</button>
-          <span class="cp-pager-counter">수집 상품 ${queue.length}건 중 <strong>${inspectIndex + 1}번째</strong></span>
-          <button type="button" class="cp-pager-btn" id="btnNextInspect">›</button>
-        </div>
-      </div>
-
-      <div class="cp-detail-main-card">
-        <div class="cp-prd-top-grid">
-          <div>
-            <div class="cp-main-photo-box">
-              ${heroPhoto ? `<img id="cpHeroPreviewImg" src="${heroPhoto}" alt="대표 이미지">` : `<span style="color:#94a3b8;font-size:13px;">이미지 없음</span>`}
-            </div>
-            ${photoList.length ? `
-              <div class="cp-thumb-strip">
-                ${photoList.slice(0, 6).map((ph, i) => {
-                  const src = ph.dataUrl || ph.url;
-                  return `<button type="button" class="cp-strip-item ${i === 0 ? "active" : ""}" data-src="${src}"><img src="${src}" alt="썸네일"></button>`;
-                }).join("")}
-                ${photoList.length > 6 ? `<span class="cp-strip-more">+${photoList.length - 6}</span>` : ""}
-              </div>
-            ` : ""}
-          </div>
-
-          <div>
-            <span class="cp-brand-pill">${cur.brand || "브랜드"}</span>
-            <h2 class="cp-prd-title-lg">${cur.title || "상품명을 입력하세요"}</h2>
-
-            <div style="font-size:12.5px;font-weight:700;color:#334155;">색상 (옵션)</div>
-            <div class="cp-color-chips-wrap">
-              ${cur.colors.map(c => `
-                <button type="button" class="cp-color-chip ${c === activeCol ? "selected" : ""}" data-col="${c}">
-                  <span class="cp-color-dot" style="background:${getColorHex(c)};"></span>
-                  <span>${c}</span>
-                  ${c === activeCol ? `<span>✓</span>` : ""}
-                </button>
-              `).join("")}
-            </div>
-
-            <div style="font-size:12.5px;font-weight:700;color:#334155;">옵션별 재고 · 판매가</div>
-            <table class="cp-opt-stock-table">
-              <thead>
-                <tr>
-                  <th>사이즈(옵션)</th>
-                  <th>재고 수량</th>
-                  <th>판매가(쿠팡)</th>
-                </tr>
-              </thead>
-              <tbody>${optRowsHtml}</tbody>
-            </table>
-          </div>
-        </div>
-      </div>
-
-      <div class="cp-wb-footer-actions">
-        <button type="button" class="cp-prev-step-btn" id="btnPrevStep">‹ 1. 상품 수집</button>
-        <button type="button" class="cp-next-step-btn" id="btnCompleteInspectNext">저장 후 3. 재고 관리로 이동 &gt;</button>
-      </div>
-    `;
-
-    inspectWorkbench.querySelectorAll(".cp-strip-item").forEach(btnEl => {
-      btnEl.addEventListener("click", () => {
-        inspectWorkbench.querySelectorAll(".cp-strip-item").forEach(b => b.classList.remove("active"));
-        btnEl.classList.add("active");
-        const hero = document.getElementById("cpHeroPreviewImg");
-        if (hero) hero.src = btnEl.dataset.src;
-      });
-    });
-
-    inspectWorkbench.querySelectorAll(".cp-color-chip").forEach(chip => {
-      chip.addEventListener("click", () => {
-        selectedInspectColor = chip.dataset.col || "";
-        renderInspectWorkbench();
-      });
-    });
-
-    document.getElementById("btnPrevInspect").addEventListener("click", () => {
-      inspectIndex = (inspectIndex - 1 + queue.length) % queue.length;
-      selectedInspectColor = "";
-      renderInspectWorkbench();
-    });
-
-    document.getElementById("btnNextInspect").addEventListener("click", () => {
-      inspectIndex = (inspectIndex + 1) % queue.length;
-      selectedInspectColor = "";
-      renderInspectWorkbench();
-    });
-
-    document.getElementById("btnPrevStep").addEventListener("click", () => {
-      activeStep = 1;
-      currentView = "collect";
-      renderStepSidebar();
-      applyViewVisibility();
-      scrollPageToTop();
-    });
-
-    document.getElementById("btnCompleteInspectNext").addEventListener("click", async () => {
-      await saveFromStudioCombined();
-      activeStep = 3;
-      currentView = "list";
-      renderStepSidebar();
-      applyViewVisibility();
-      fetchProducts();
-      scrollPageToTop();
-    });
-  }
-
+  // =========================================================================
+  // 6) 폼 바인딩 & 데이터 동기화 (FORMS & FIREBASE SYNC)
+  // =========================================================================
   function getNoticeFromForm(p) {
     const obj = {};
     NOTICE_FIELDS.forEach(([k]) => {
@@ -1666,7 +1445,7 @@
     const rawReg = Number(storageData.regularPrice) || 0;
 
     return {
-      brand,
+      brand: brand || storageData.brand || extractBrandFromText(cleanLfName),
       code,
       defaultName,
       lfName: cleanLfName,
@@ -1686,7 +1465,6 @@
   }
 
   async function syncFromStudioPanel(showToast = true, overwrite = false) {
-    cleanUnwantedUI();
     window.postMessage({ type: "REQUEST_LF_MAKER_DATA" }, "*");
     const d = await readStudioAndExtensionData();
     if (d.brand && (overwrite || !document.getElementById("sBrand").value)) document.getElementById("sBrand").value = d.brand;
@@ -1714,9 +1492,7 @@
     if (d.notice?.material) applyFabricMaterialToStudio(d.notice.material);
     if (Array.isArray(d.items) && d.items.length) await applyCollectedPhotosToStudio(d);
 
-    renderInspectWorkbench();
-    renderCollectArchiveView();
-    if (showToast) alert("📥 1. 상품 수집 데이터를 반영했습니다!");
+    if (showToast) alert("📥 1. 상품 수집 데이터를 제작 폼에 반영했습니다!");
   }
 
   document.getElementById("btnSyncFromStudio").addEventListener("click", () => syncFromStudioPanel(true, true));
@@ -1729,7 +1505,6 @@
     studioOptCtrl.setOptions([]);
     setNoticeToForm("s", { asInfo: "상세페이지 참고" });
     updateStudioTags();
-    renderInspectWorkbench();
   });
 
   function updateAuthUI() {
@@ -1908,7 +1683,7 @@
           discountPrice: Number(f.discountPrice?.integerValue || f.discountPrice?.doubleValue || 0),
           price: Number(f.price?.integerValue || f.price?.doubleValue || 0),
           regularPrice: Number(f.regularPrice?.integerValue || f.regularPrice?.doubleValue || 0),
-          status: f.status?.stringValue || "1. 상품 수집",
+          status: f.status?.stringValue || "판매 중",
           copy: f.copy?.stringValue || "",
           author: f.author?.stringValue || "",
           updatedBy: f.updatedBy?.stringValue || "",
@@ -1946,7 +1721,7 @@
         discountPrice: { integerValue: String(Math.round(item.discountPrice || 0)) },
         price: { integerValue: String(Math.round(item.price || 0)) },
         regularPrice: { integerValue: String(Math.round(item.regularPrice || 0)) },
-        status: { stringValue: item.status || "2. 상품 제작" },
+        status: { stringValue: item.status || "판매 중" },
         copy: { stringValue: item.copy || "" },
         author: { stringValue: user },
         updatedBy: { stringValue: user },
@@ -2008,26 +1783,34 @@
       ? p.options.map((o, i) => ({ ...o, stock: i === 0 ? safeTotal : 0 }))
       : [{ color: "", code: p.code || "", size: "", stock: safeTotal }];
     p.options = opts;
+    const logLine = `[${formatDateTime()}] ${getUserName()}: 재고 ${safeTotal}개로 변경`;
+    const nextCopy = p.copy ? `${p.copy}\n${logLine}` : logLine;
+    p.copy = nextCopy;
 
-    await authFetch(`${BASE_URL}/${p.id}?updateMask.fieldPaths=optionsJson&updateMask.fieldPaths=updatedBy&key=${API_KEY}`, {
+    await authFetch(`${BASE_URL}/${p.id}?updateMask.fieldPaths=optionsJson&updateMask.fieldPaths=copy&updateMask.fieldPaths=updatedBy&key=${API_KEY}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         fields: {
           optionsJson: { stringValue: JSON.stringify(opts) },
+          copy: { stringValue: nextCopy },
           updatedBy: { stringValue: getUserName() }
         }
       })
     });
   }
 
-  async function updateStatusOnly(id, newStatus) {
-    await authFetch(`${BASE_URL}/${id}?updateMask.fieldPaths=status&updateMask.fieldPaths=updatedBy&key=${API_KEY}`, {
+  async function updateStatusOnly(p, newStatus) {
+    const logLine = `[${formatDateTime()}] ${getUserName()}: 상태 '${newStatus}' 변경`;
+    const nextCopy = p.copy ? `${p.copy}\n${logLine}` : logLine;
+    p.copy = nextCopy;
+    await authFetch(`${BASE_URL}/${p.id}?updateMask.fieldPaths=status&updateMask.fieldPaths=copy&updateMask.fieldPaths=updatedBy&key=${API_KEY}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         fields: {
           status: { stringValue: newStatus },
+          copy: { stringValue: nextCopy },
           updatedBy: { stringValue: getUserName() }
         }
       })
@@ -2161,7 +1944,7 @@
     document.getElementById("eDiscountPrice").value = formatComma(p.discountPrice);
     document.getElementById("ePrice").value = formatComma(p.price);
     document.getElementById("eRegularPrice").value = formatComma(p.regularPrice);
-    document.getElementById("eStatus").value = p.status || "1. 상품 수집";
+    document.getElementById("eStatus").value = p.status || "판매 중";
     document.getElementById("eCopy").value = p.copy || "";
     editModal.hidden = false;
   }
@@ -2245,11 +2028,11 @@
         discountPrice: costVal,
         price: saleVal,
         regularPrice: parseNum(document.getElementById("sRegularPrice").value) || ext.regularPrice,
-        status: document.getElementById("sStatus").value || "2. 상품 제작",
+        status: document.getElementById("sStatus").value || "판매 중",
         copy: document.getElementById("sCopy").value.trim() || ext.studioCopy
       });
-      alert(`✅ [${fullName}] 상품이 상품 리스트에 저장되었습니다!`);
-      if (!listView.hidden) fetchProducts();
+      alert(`✅ [${fullName}] 상품이 3. 재고 관리(상품 리스트)에 저장되었습니다!`);
+      if (currentView === "list") fetchProducts();
     } catch (e) {
       alert("저장 중 오류: " + e.message);
     }
@@ -2277,7 +2060,7 @@
       const tr = document.createElement("tr");
       const workerInfo = [
         p.author ? `등록: ${p.author}` : "",
-        p.updatedBy ? `수정: ${p.updatedBy}` : ""
+        p.updatedBy ? `마지막 확인: ${p.updatedBy}` : ""
       ].filter(Boolean).join(" · ");
 
       const uniqueCodes = [...new Set((p.options || []).map(o => o.code).filter(Boolean))];
@@ -2310,9 +2093,10 @@
         <td class="cp-price-col" style="color:#64748b;">${formatWon(p.regularPrice)}</td>
         <td>
           <select class="cp-row-status">
-            <option value="1. 상품 수집" ${p.status === "1. 상품 수집" ? "selected" : ""}>1. 상품 수집</option>
-            <option value="2. 상품 제작" ${p.status === "2. 상품 제작" ? "selected" : ""}>2. 상품 제작</option>
-            <option value="3. 재고 관리" ${p.status === "3. 재고 관리" ? "selected" : ""}>3. 재고 관리</option>
+            <option value="판매 중" ${p.status === "판매 중" ? "selected" : ""}>판매 중</option>
+            <option value="품절" ${p.status === "품절" ? "selected" : ""}>품절</option>
+            <option value="확인 필요" ${p.status === "확인 필요" ? "selected" : ""}>확인 필요</option>
+            <option value="상품 종료" ${p.status === "상품 종료" ? "selected" : ""}>상품 종료</option>
           </select>
         </td>
         <td>
@@ -2327,12 +2111,28 @@
         e.target.value = clamped;
         updateStockOnly(p, clamped);
       });
-      tr.querySelector(".cp-row-status").addEventListener("change", e => updateStatusOnly(p.id, e.target.value));
+      tr.querySelector(".cp-row-status").addEventListener("change", e => updateStatusOnly(p, e.target.value));
       tr.querySelector(".cp-edit-btn").addEventListener("click", () => openEditModal(p));
       tr.querySelector(".cp-del-btn").addEventListener("click", () => deleteProduct(p.id));
       tbody.appendChild(tr);
     });
   }
+
+  document.addEventListener("input", e => {
+    if (e.target.classList.contains("cp-money-input")) {
+      e.target.value = formatComma(e.target.value);
+    }
+    if (e.target.classList.contains("opt-stock")) {
+      const clamped = clampStock(e.target.value);
+      if (String(clamped) !== e.target.value && e.target.value !== "") {
+        e.target.value = clamped;
+      }
+    }
+    if (e.target.placeholder && /블랙/.test(e.target.placeholder)) {
+      const card = e.target.closest("div")?.parentElement?.parentElement || e.target.parentElement;
+      if (card) applyNavyWhiteTextColor(card, e.target.value);
+    }
+  });
 
   let observerTimer = null;
   const studioObserver = new MutationObserver(() => {
