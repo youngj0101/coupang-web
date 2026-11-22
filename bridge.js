@@ -108,15 +108,15 @@ function lfCopyFacts3(d, override={}) {
   const materialWord=cp.material?.replace(/\s/g,''), patternWord=cp.pattern?.replace(/ 패턴$/,'').replace('전체 퀼팅','퀼팅');
   const tokens=uniq([gender,cp.season,materialWord,patternWord,cp.neck?.replace(/\s/g,''),...rawFeatures,cp.feature?.replace('슬림한 실루엣','슬림핏'),cp.style,colors.length===1&&colors[0],colors.length>1&&colors.length+'컬러',sizes.length>1&&sizes.length+'사이즈',d.code&&/^[A-Z\d_-]{3,24}$/i.test(d.code)?d.code:''].filter(Boolean)).filter(w=>w!==brand&&w!==cat);
   const mid=tokens.slice(0,5); const words=uniq([brand,...mid,cat]);const name=words.join(' ');
-  const para=[];const item=[brand,gender,cat].filter(Boolean).join(' ');
-  if(item)para.push(item+' 상품입니다. '+[cp.pattern&&('패턴은 '+cp.pattern),cp.neck&&('넥라인은 '+cp.neck),cp.feature&&('디자인 특징은 '+cp.feature)].filter(Boolean).map(x=>x+'입니다.').join(' '));
-  if(extras.length||rawFeatures.length)para.push('제품에서 살펴볼 디테일은 '+uniq([...extras,...rawFeatures.filter(w=>!extras.some(v=>v.includes(w)))]).join(', ')+'입니다. 앞면과 뒷면 사진에서는 전체적인 형태를, 디테일 사진에서는 각 부분의 마감을 확인해 보세요.');
-  if(colors.length||sizes.length){let opt=colors.length?'색상은 '+colors.join(', ')+' 중에서 선택할 수 있습니다. ':'';const map=colors.map(col=>[col,uniq((d.options||[]).filter(o=>o.color===col).map(o=>o.size)).filter(confirmed)]).filter(([,sz])=>sz.length);if(map.length>1&&new Set(map.map(([,sz])=>sz.join('/'))).size>1){opt+='색상별 사이즈 구성은 '+map.map(([col,sz])=>col+' '+sz.join('·')).join(' / ')+'입니다.'}else if(sizes.length){opt+='상품에 표기된 사이즈는 '+sizes.join(', ')+'입니다.'}para.push(opt+' 평소 입는 옷의 실측과 하단 사이즈표를 같은 측정 부위끼리 비교해 보세요.')}
-  if(mat)para.push('소재 및 혼용률은 다음과 같습니다. '+mat.replace(/[.。\s]+$/,'')+'.');
-  if(confirmed(tidy(n.care)))para.push('세탁 및 보관 시에는 제품에 표시된 취급 방법을 확인해 주세요. '+tidy(n.care));
+  const para=[];const detachable=/(?:탈부착|탈착|분리형)\s*(?:퍼|털)?\s*(?:카라|칼라|후드)/.exec(title)?.[0];const part=detachable?.replace(/^(탈부착|탈착|분리형)\s*/,'').replace(/퍼\s*(카라|칼라)/,'퍼 카라');const length=/미들|미디엄|미디\s*기장/.test(title)?'미들 기장':/롱\s*(?:기장|다운|패딩|코트)/.test(title)?'롱 기장':/숏\s*(?:기장|다운|패딩|점퍼)/.test(title)?'숏 기장':'';const type=/다운\s*점퍼/.test(title)?'다운 점퍼':cat;
+  if(part)para.push((length?length+'의 ':'')+(type||'디자인')+'에 탈부착 가능한 '+part+'를 더했습니다. '+(/카라|칼라/.test(part)?'카라를 떼면 목선이 한결 간결해져 두 가지 분위기로 입을 수 있습니다.':'후드를 분리해 원하는 스타일로 입을 수 있습니다.'));
+  else {const details=uniq([cp.neck,patternWord,cp.feature,...rawFeatures.filter(v=>!['탈부착','하프'].includes(v))]).slice(0,2);if(details.length)para.push(details.join(' · ')+' 디테일을 살린 '+[length,type].filter(Boolean).join(' ')+'입니다.');else if(length&&type)para.push(length+'으로 디자인한 '+type+'입니다.');else {const clean=title.split(/[,|]/).pop().replace(/[A-Z]{2,}\d[A-Z\d-]+/gi,'').trim();if(clean)para.push(clean.replace(/[.!?]$/,'')+'입니다.')}}
   return {brand,cat,cp,extras,name,desc:para.map(tidy).filter(Boolean).join('\n\n').slice(0,2450),review:!brand||!cat||name.split(/\s+/).length<6||name.split(/\s+/).length>7};
 }
+function applyWear32(d){const variants=d.variants?.length?d.variants:[d];const keys=['신축성','두께감','촉감','비침','안감'];const issues=[];for(const [i,k] of keys.entries()){const sel=document.getElementById('fabricVal'+i);if(!sel)continue;const values=variants.map(p=>p.wear?.[k]||'');let v=values[0]&&values.every(x=>x===values[0])?values[0]:'';
+ if(v==='부분 안감'&&!Array.from(sel.options).some(o=>o.value===v))sel.add(new Option(v,v));if(!Array.from(sel.options).some(o=>o.value===v))v='';sel.value=v;sel.dispatchEvent(new Event('change',{bubbles:true}));if(!v)issues.push(k)}const lab=document.getElementById('fabricVal4');if(lab){let hint=document.getElementById('wear32Hint');if(!hint){hint=document.createElement('p');hint.id='wear32Hint';lab.closest('fieldset')?.append(hint)}hint.textContent=issues.length?'미확인 또는 색상별 값이 다름: '+issues.join(', ')+' (자동 강조 안 함)':'LF몰 착용 정보 5개 항목 반영 완료'}}
 function applyCopy3(d){
+  applyWear32(d);
   const el=id=>document.getElementById(id);const emit=e=>{e.dispatchEvent(new Event('input',{bubbles:true}));e.dispatchEvent(new Event('change',{bubbles:true}))};
   const set=(id,v)=>{const e=el(id);if(!e)return;e.value=v||'';emit(e)};
   const initial=lfCopyFacts3(d);if(initial.brand){set('brand',initial.brand);set('sBrand',initial.brand)}set('prod',initial.cat);set('sName',initial.name);
