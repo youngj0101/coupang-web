@@ -65,6 +65,8 @@
   let bridgeMakerData = null;
   let latestMeasuredSizes = null;
   let latestMaterialText = "";
+  let latestThumbDataUrl = "";
+  let latestDetailDataUrl = "";
   let initialScrollLocked = false;
   let currentView = "studio";
 
@@ -112,6 +114,13 @@
     return Math.min(MAX_STOCK, Math.round(n));
   }
 
+  function getTotalStock(p) {
+    if (Array.isArray(p?.options) && p.options.length) {
+      return p.options.reduce((sum, o) => sum + clampStock(o.stock ?? MAX_STOCK), 0);
+    }
+    return clampStock(p?.stock ?? MAX_STOCK);
+  }
+
   function formatComma(val) {
     const raw = String(val ?? "").replace(/[^0-9]/g, "");
     if (!raw) return "";
@@ -137,6 +146,10 @@
       .replace(/\s*\|\s*LF몰.*$/i, "")
       .replace(/^\s*[-–|·]+\s*|\s*[-–|·]+\s*$/g, "")
       .trim();
+  }
+
+  function isNavyColor(colorName) {
+    return /네이비|navy|남색/i.test(String(colorName || "").trim());
   }
 
   function buildSeoTagsFromFields({ name, lfName, code, material, options }) {
@@ -378,11 +391,13 @@
     return null;
   }
 
-  function setFileInputFiles(input, file) {
-    if (!input || !file) return;
+  function setFileInputFiles(input, files) {
+    if (!input || !files) return;
+    const arr = Array.isArray(files) ? files.filter(Boolean) : [files].filter(Boolean);
+    if (!arr.length) return;
     try {
       const dt = new DataTransfer();
-      dt.items.add(file);
+      arr.forEach(f => dt.items.add(f));
       input.files = dt.files;
       input.dispatchEvent(new Event("input", { bubbles: true }));
       input.dispatchEvent(new Event("change", { bubbles: true }));
@@ -391,9 +406,10 @@
 
   function detectSlotRole(fileInput) {
     let cur = fileInput.parentElement;
-    for (let i = 0; i < 5 && cur; i++) {
+    for (let i = 0; i < 6 && cur; i++) {
       const t = (cur.innerText || cur.textContent || "").replace(/\s+/g, " ").trim();
-      if (t.length <= 120) {
+      if (t.length <= 140) {
+        if (/추가\s*디테일/.test(t)) return "추가 디테일";
         if (/앞면/.test(t)) return "앞면";
         if (/뒷면/.test(t)) return "뒷면";
         if (/디테일\s*1/.test(t)) return "디테일 1";
@@ -430,10 +446,39 @@
     return cards;
   }
 
+  function applyNavyWhiteTextColor(optCard, colorName) {
+    if (!optCard || !isNavyColor(colorName)) return;
+    const colorPickers = [...optCard.querySelectorAll('input[type="color"]')];
+    const textColorInput = colorPickers[1] || colorPickers[colorPickers.length - 1];
+    if (textColorInput) {
+      textColorInput.value = "#ffffff";
+      textColorInput.dispatchEvent(new Event("input", { bubbles: true }));
+      textColorInput.dispatchEvent(new Event("change", { bubbles: true }));
+    }
+    const recBtn = [...optCard.querySelectorAll("button")].find(b =>
+      /글씨색|흰색|white/i.test((b.innerText || "").trim())
+    );
+    if (recBtn && /흰색|white/i.test(recBtn.innerText || "")) {
+      recBtn.click();
+    }
+  }
+
+  function renderLfReceivedPreview(makerData) {
+    const lfRec = document.getElementById("lfReceived");
+    if (!lfRec || !Array.isArray(makerData?.items)) return;
+    const list = makerData.items.filter(x => (x?.dataUrl || x?.url) && x.role !== "제외");
+    if (!list.length) return;
+    lfRec.innerHTML = `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:10px;margin-top:10px;">${
+      list.map(x => `<div style="border:1px solid #cbd5e1;border-radius:8px;padding:6px;background:#fff;text-align:center;"><img src="${x.dataUrl || x.url}" style="width:100%;height:96px;object-fit:cover;border-radius:4px;"><div style="font-size:11.5px;font-weight:700;margin-top:4px;">${x.color || ""} · ${x.role || ""}</div></div>`).join("")
+    }</div>`;
+  }
+
   async function applyCollectedPhotosToStudio(makerData) {
     if (currentView !== "studio") return;
     const items = Array.isArray(makerData?.items) ? makerData.items : [];
     if (!items.length) return;
+
+    renderLfReceivedPreview(makerData);
 
     const grouped = [];
     const byColor = new Map();
@@ -464,6 +509,7 @@
       ) || textInputs[0];
 
       if (colorInp) setNativeInputValue(colorInp, g.color);
+      applyNavyWhiteTextColor(optCard, g.color);
 
       const codeInp = textInputs.find(i =>
         i !== colorInp &&
@@ -472,10 +518,30 @@
 
       if (codeInp && g.code) setNativeInputValue(codeInp, g.code);
 
+      const extraPhotos = g.photos.filter(p => /추가\s*디테일/.test(p.role));
+      const extraFiles = [];
+      for (const ep of extraPhotos) {
+        const ef = await urlToFile(ep.imgSrc, `${g.color}_extra_${ep.key || "detail"}.jpg`);
+        if (ef) extraFiles.push(ef);
+      }
+
       const cardFileInputs = [...optCard.querySelectorAll('input[type="file"]')];
       for (const fInp of cardFileInputs) {
         const slotRole = detectSlotRole(fInp);
         if (!slotRole) continue;
+
+        if (slotRole === "추가 디테일") {
+          if (extraFiles.length) {
+            setFileInputFiles(fInp, extraFiles);
+            const slotWrap = fInp.closest("div")?.parentElement || fInp.parentElement;
+            const noFileNode = [...(slotWrap?.querySelectorAll("span, small, p, div") || [])].find(
+              n => n.children.length === 0 && /선택된\s*파일\s*없음/.test((n.textContent || "").trim())
+            );
+            if (noFileNode) noFileNode.textContent = `${extraFiles.length}개 파일 선택됨`;
+          }
+          continue;
+        }
+
         const matched = g.photos.find(p => p.role === slotRole);
         if (!matched?.imgSrc) continue;
 
@@ -493,24 +559,69 @@
   }
 
   function readGeneratedStudioAssets() {
-    let thumbUrl = "";
-    let detailImgUrl = "";
+    let thumbUrl = latestThumbDataUrl || "";
+    let detailImgUrl = latestDetailDataUrl || "";
 
-    const canvases = [...document.querySelectorAll("canvas")].filter(c => c.width > 100 && c.height > 100);
+    const canvases = [...document.querySelectorAll("canvas")].filter(c => {
+      if (c.closest("#cpStudioRegSection, #cpEditModal, #cpListView")) return false;
+      return c.width > 80 && c.height > 80;
+    });
+
     if (canvases.length) {
       try {
-        const u0 = canvases[0].toDataURL("image/jpeg", 0.85);
-        if (u0 && !u0.includes("github.io")) thumbUrl = u0;
+        const firstUrl = canvases[0].toDataURL("image/jpeg", 0.85);
+        if (firstUrl && firstUrl.startsWith("data:image")) {
+          thumbUrl = firstUrl;
+          latestThumbDataUrl = firstUrl;
+        }
       } catch {}
-      if (canvases.length > 1) {
-        try {
-          const u1 = canvases[canvases.length - 1].toDataURL("image/jpeg", 0.85);
-          if (u1 && !u1.includes("github.io")) detailImgUrl = u1;
-        } catch {}
-      }
+      try {
+        const lastUrl = canvases[canvases.length - 1].toDataURL("image/jpeg", 0.85);
+        if (lastUrl && lastUrl.startsWith("data:image")) {
+          detailImgUrl = lastUrl;
+          latestDetailDataUrl = lastUrl;
+        }
+      } catch {}
+    }
+
+    const previewImgs = [...document.querySelectorAll("img")].filter(img => {
+      if (img.closest("#cpStudioRegSection, #cpEditModal, #cpListView, #lfReceived")) return false;
+      const src = img.currentSrc || img.src || "";
+      return src.startsWith("data:image");
+    });
+
+    if (!thumbUrl && previewImgs[0]) {
+      thumbUrl = previewImgs[0].currentSrc || previewImgs[0].src || "";
+      if (thumbUrl) latestThumbDataUrl = thumbUrl;
+    }
+    if (!detailImgUrl && previewImgs.length > 1) {
+      detailImgUrl = previewImgs[previewImgs.length - 1].currentSrc || previewImgs[previewImgs.length - 1].src || "";
+      if (detailImgUrl) latestDetailDataUrl = detailImgUrl;
     }
 
     return { thumbUrl, detailImgUrl };
+  }
+
+  async function triggerMakeAllAndCaptureAssets() {
+    const nativeMakeBtn = [...document.querySelectorAll("button")].find(b =>
+      !b.id?.startsWith("cp") &&
+      !b.closest("#cpStudioRegSection, #cpEditModal, #cpListView") &&
+      /모든\s*색상\s*결과\s*만들기/.test((b.innerText || b.textContent || "").replace(/\s+/g, " ").trim())
+    );
+
+    if (nativeMakeBtn) {
+      nativeMakeBtn.click();
+      await new Promise(r => setTimeout(r, 800));
+    }
+
+    const assets = readGeneratedStudioAssets();
+    if (assets.thumbUrl) {
+      document.getElementById("sThumbUrl").value = assets.thumbUrl;
+    }
+    if (assets.detailImgUrl) {
+      document.getElementById("sDetailImgUrl").value = assets.detailImgUrl;
+    }
+    return assets;
   }
 
   let observerTimer = null;
@@ -521,6 +632,10 @@
       if (currentView === "studio") {
         if (latestMeasuredSizes?.rows?.length) applyMeasuredSizesToStudio(latestMeasuredSizes);
         if (latestMaterialText) applyFabricMaterialToStudio(latestMaterialText);
+        findOptionCards().forEach(card => {
+          const cInp = card.querySelector('input[placeholder*="블랙"], input[type="text"]');
+          if (cInp?.value) applyNavyWhiteTextColor(card, cInp.value);
+        });
       }
       if (!initialScrollLocked) {
         scrollPageToTop();
@@ -634,7 +749,7 @@
       box-sizing: border-box;
     }
     .cp-studio-reg-card { max-width: 920px; margin: 0 auto 20px; border-top: 4px solid #003cb3; }
-    .cp-list-card { max-width: 1200px; margin: 0 auto; }
+    .cp-list-card { max-width: 1240px; margin: 0 auto; }
     .cp-card-head {
       display: flex; justify-content: space-between; align-items: center;
       margin-bottom: 14px; gap: 10px; flex-wrap: wrap;
@@ -719,13 +834,22 @@
     .cp-tag-count.over { color: #dc2626; }
 
     .cp-table-wrap { width: 100%; overflow-x: auto; }
-    .cp-table { width: 100%; border-collapse: collapse; font-size: 13px; min-width: 1140px; }
+    .cp-table { width: 100%; border-collapse: collapse; font-size: 13px; min-width: 1220px; }
     .cp-table th, .cp-table td {
       padding: 11px 8px; border-bottom: 1px solid #e5e7eb; text-align: left; vertical-align: middle;
     }
     .cp-table th { background: #f8fafc; color: #334155; font-weight: 700; white-space: nowrap; }
     .cp-num-col { text-align: center !important; color: #64748b; font-weight: 700; }
     .cp-price-col { text-align: right !important; white-space: nowrap; font-variant-numeric: tabular-nums; }
+    .cp-thumb-mini {
+      width: 44px; height: 56px; object-fit: cover; border-radius: 5px;
+      border: 1px solid #cbd5e1; background: #f8fafc; display: block;
+    }
+    .cp-stock-input {
+      width: 62px !important; padding: 5px 6px !important; text-align: center;
+      font-size: 12.5px !important; font-weight: 700; border: 1px solid #cbd5e1 !important;
+      border-radius: 6px !important;
+    }
     .cp-margin-badge {
       display: inline-block; font-size: 11px; font-weight: 700; padding: 2px 6px;
       border-radius: 5px; margin-top: 3px;
@@ -740,7 +864,7 @@
     }
     .cp-link-btn:hover { background: #dbeafe; }
     .cp-worker-tag { font-size: 11px; color: #94a3b8; margin-top: 3px; }
-    .cp-row-status { width: 100%; min-width: 125px; font-size: 12px !important; padding: 6px !important; }
+    .cp-row-status { width: 100%; min-width: 120px; font-size: 12px !important; padding: 6px !important; }
     .cp-action-wrap { display: flex; gap: 5px; white-space: nowrap; }
     .cp-edit-btn {
       background: #2563eb !important; color: #fff !important;
@@ -844,16 +968,18 @@
         <table class="cp-table">
           <thead>
             <tr>
-              <th style="width:48px;text-align:center;">순번</th>
-              <th style="width:94px;">업로드 날짜</th>
-              <th style="min-width:220px;">상품명 (쿠팡 / LF몰)</th>
-              <th style="width:72px;">상품링크</th>
-              <th style="width:125px;">품번</th>
-              <th style="width:96px;text-align:right;">최대혜택가(소싱)</th>
-              <th style="width:130px;text-align:right;">쿠팡 판매가 / 마진</th>
-              <th style="width:96px;text-align:right;">정가</th>
-              <th style="width:136px;">상태</th>
-              <th style="width:102px;">관리</th>
+              <th style="width:44px;text-align:center;">순번</th>
+              <th style="width:90px;">업로드 날짜</th>
+              <th style="width:56px;">썸네일</th>
+              <th style="min-width:210px;">상품명 (쿠팡 / LF몰)</th>
+              <th style="width:70px;">상품링크</th>
+              <th style="width:120px;">품번</th>
+              <th style="width:70px;text-align:center;">재고</th>
+              <th style="width:94px;text-align:right;">최대혜택가(소싱)</th>
+              <th style="width:128px;text-align:right;">쿠팡 판매가 / 마진</th>
+              <th style="width:90px;text-align:right;">정가</th>
+              <th style="width:126px;">상태</th>
+              <th style="width:98px;">관리</th>
             </tr>
           </thead>
           <tbody id="mTableBody"></tbody>
@@ -929,8 +1055,8 @@
 
       <div class="cp-grid-3">
         <label class="cp-field-label">상품링크 (URL)<input id="${p}SourceUrl" type="url" placeholder="https://www.lfmall.co.kr/..."></label>
-        <label class="cp-field-label">대표이미지 URL<input id="${p}ThumbUrl" type="url" placeholder="https://..."></label>
-        <label class="cp-field-label">상세설명 이미지 URL<input id="${p}DetailImgUrl" type="url" placeholder="https://..."></label>
+        <label class="cp-field-label">대표이미지 URL<input id="${p}ThumbUrl" type="text" placeholder="https://..."></label>
+        <label class="cp-field-label">상세설명 이미지 URL<input id="${p}DetailImgUrl" type="text" placeholder="https://..."></label>
       </div>
 
       <div class="cp-grid-3">
@@ -1028,6 +1154,19 @@
     window.postMessage({ type: "REQUEST_LF_MAKER_DATA" }, "*");
   }, 300);
 
+  document.addEventListener("click", e => {
+    const btnEl = e.target.closest("button");
+    if (!btnEl || btnEl.id?.startsWith("cp")) return;
+    const t = (btnEl.innerText || btnEl.textContent || "").replace(/\s+/g, " ").trim();
+    if (/모든\s*색상\s*결과\s*만들기/.test(t)) {
+      setTimeout(() => {
+        const assets = readGeneratedStudioAssets();
+        if (assets.thumbUrl) document.getElementById("sThumbUrl").value = assets.thumbUrl;
+        if (assets.detailImgUrl) document.getElementById("sDetailImgUrl").value = assets.detailImgUrl;
+      }, 600);
+    }
+  });
+
   document.addEventListener("input", e => {
     if (e.target.classList.contains("cp-money-input")) {
       e.target.value = formatComma(e.target.value);
@@ -1037,6 +1176,10 @@
       if (String(clamped) !== e.target.value && e.target.value !== "") {
         e.target.value = clamped;
       }
+    }
+    if (e.target.placeholder && /블랙/.test(e.target.placeholder)) {
+      const card = e.target.closest("div")?.parentElement?.parentElement || e.target.parentElement;
+      if (card) applyNavyWhiteTextColor(card, e.target.value);
     }
   });
 
@@ -1256,7 +1399,7 @@
       defaultName,
       lfName: cleanLfName,
       sourceUrl: storageData.url || "",
-      thumbUrl: firstHttpThumb || generatedAssets.thumbUrl || "",
+      thumbUrl: generatedAssets.thumbUrl || firstHttpThumb || "",
       detailImgUrl: generatedAssets.detailImgUrl || firstHttpThumb || "",
       discountPrice: Number(storageData.discountPrice) || 0,
       regularPrice: Number(storageData.regularPrice) || 0,
@@ -1505,7 +1648,7 @@
 
   async function fetchProducts() {
     const tbody = document.getElementById("mTableBody");
-    tbody.innerHTML = `<tr><td colspan="10" style="text-align:center;padding:30px;">데이터 불러오는 중...</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="12" style="text-align:center;padding:30px;">데이터 불러오는 중...</td></tr>`;
     try {
       const res = await authFetch(`${BASE_URL}?key=${API_KEY}`);
       const json = await res.json();
@@ -1546,7 +1689,7 @@
       updateMonthOptions();
       renderList();
     } catch (err) {
-      tbody.innerHTML = `<tr><td colspan="10" style="text-align:center;color:#dc2626;padding:30px;">오류: ${err.message}</td></tr>`;
+      tbody.innerHTML = `<tr><td colspan="12" style="text-align:center;color:#dc2626;padding:30px;">오류: ${err.message}</td></tr>`;
     }
   }
 
@@ -1627,6 +1770,25 @@
       body: JSON.stringify(payload)
     });
     if (!res.ok) throw new Error("수정 실패");
+  }
+
+  async function updateStockOnly(p, newTotalStock) {
+    const safeTotal = clampStock(newTotalStock);
+    const opts = Array.isArray(p.options) && p.options.length
+      ? p.options.map((o, i) => ({ ...o, stock: i === 0 ? safeTotal : 0 }))
+      : [{ color: "", code: p.code || "", size: "", stock: safeTotal }];
+    p.options = opts;
+
+    await authFetch(`${BASE_URL}/${p.id}?updateMask.fieldPaths=optionsJson&updateMask.fieldPaths=updatedBy&key=${API_KEY}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        fields: {
+          optionsJson: { stringValue: JSON.stringify(opts) },
+          updatedBy: { stringValue: getUserName() }
+        }
+      })
+    });
   }
 
   async function updateStatusOnly(id, newStatus) {
@@ -1782,7 +1944,7 @@
 
   document.getElementById("btnSaveEdit").addEventListener("click", async () => {
     if (!editingId) return;
-    const name = document.getElementById("eName").value.trim();
+    const name = sanitizeProductTitle(document.getElementById("eName").value);
     if (!name) return alert("쿠팡 상품명을 입력해 주세요.");
     try {
       const options = editOptCtrl.getOptions();
@@ -1791,7 +1953,7 @@
         brand: document.getElementById("eBrand").value.trim(),
         category: editCatCtrl.getPath(),
         name,
-        lfName: document.getElementById("eLfName").value.trim(),
+        lfName: sanitizeProductTitle(document.getElementById("eLfName").value),
         code: options[0]?.code || "",
         options,
         notice: getNoticeFromForm("e"),
@@ -1814,6 +1976,7 @@
   });
 
   async function saveFromStudioCombined() {
+    await triggerMakeAllAndCaptureAssets();
     const ext = await readStudioAndExtensionData();
     const panelName = sanitizeProductTitle(document.getElementById("sName").value);
     const fullName = panelName || ext.defaultName;
@@ -1842,9 +2005,9 @@
     const finalCopy = panelCopy || ext.studioCopy;
 
     const rawThumb = document.getElementById("sThumbUrl").value.trim();
-    const thumbVal = (rawThumb && !rawThumb.startsWith("blob:")) ? rawThumb : ext.thumbUrl;
+    const thumbVal = rawThumb || ext.thumbUrl;
     const rawDetail = document.getElementById("sDetailImgUrl").value.trim();
-    const detailVal = (rawDetail && !rawDetail.startsWith("blob:")) ? rawDetail : (ext.detailImgUrl || thumbVal);
+    const detailVal = rawDetail || ext.detailImgUrl || thumbVal;
     const rawTagsVal = document.getElementById("sTags").value.trim() || (ext.seoTags || []).join(", ");
 
     try {
@@ -1890,7 +2053,7 @@
     tbody.innerHTML = "";
 
     if (!filtered.length) {
-      tbody.innerHTML = `<tr><td colspan="10" style="text-align:center;padding:30px;color:#64748b;">조건에 맞는 상품이 없습니다.</td></tr>`;
+      tbody.innerHTML = `<tr><td colspan="12" style="text-align:center;padding:30px;color:#64748b;">조건에 맞는 상품이 없습니다.</td></tr>`;
       return;
     }
 
@@ -1907,19 +2070,30 @@
 
       const uniqueCodes = [...new Set((p.options || []).map(o => o.code).filter(Boolean))];
       const displayCode = uniqueCodes.length ? uniqueCodes.join(", ") : (p.code || "-");
+      const totalStock = getTotalStock(p);
+      const thumbSrc = p.thumbUrl || p.detailImgUrl || "";
 
       tr.innerHTML = `
         <td class="cp-num-col">${idx + 1}</td>
         <td style="white-space:nowrap;color:#475569;">${p.uploadDate}</td>
         <td>
+          ${thumbSrc
+            ? `<img src="${thumbSrc}" class="cp-thumb-mini" alt="썸네일" title="${p.detailImgUrl ? "상세페이지 이미지도 저장됨" : ""}">`
+            : `<span style="color:#94a3b8;font-size:11.5px;">없음</span>`}
+        </td>
+        <td>
           <div style="font-weight:700;word-break:break-word;color:#0f172a;">${p.name}</div>
           ${p.lfName ? `<div class="cp-lf-sub">LF: ${p.lfName}</div>` : ""}
+          ${p.detailImgUrl ? `<div class="cp-lf-sub" style="color:#0284c7;">상세이미지 저장됨</div>` : ""}
           ${workerInfo ? `<div class="cp-worker-tag">${workerInfo}</div>` : ""}
         </td>
         <td>
           ${p.sourceUrl ? `<a href="${p.sourceUrl}" target="_blank" class="cp-link-btn">링크 ↗</a>` : `<span style="color:#94a3b8;">-</span>`}
         </td>
         <td style="font-family:monospace;font-size:12px;color:#334155;word-break:break-all;">${displayCode}</td>
+        <td style="text-align:center;">
+          <input type="number" class="cp-stock-input" min="0" max="${MAX_STOCK}" value="${totalStock}">
+        </td>
         <td class="cp-price-col">${formatWon(p.discountPrice)}</td>
         <td class="cp-price-col">
           <div style="font-weight:700;color:#003cb3;">${formatWon(p.price)}</div>
@@ -1940,6 +2114,11 @@
           </div>
         </td>
       `;
+      tr.querySelector(".cp-stock-input").addEventListener("change", e => {
+        const clamped = clampStock(e.target.value);
+        e.target.value = clamped;
+        updateStockOnly(p, clamped);
+      });
       tr.querySelector(".cp-row-status").addEventListener("change", e => updateStatusOnly(p.id, e.target.value));
       tr.querySelector(".cp-edit-btn").addEventListener("click", () => openEditModal(p));
       tr.querySelector(".cp-del-btn").addEventListener("click", () => deleteProduct(p.id));
