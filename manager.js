@@ -351,6 +351,119 @@
     }
   }
 
+  async function urlToFile(url, filename = "image.jpg") {
+    try {
+      const res = await fetch(url, { mode: "cors" });
+      if (!res.ok) throw new Error("fetch failed");
+      const blob = await res.blob();
+      const mime = blob.type || "image/jpeg";
+      const ext = mime.includes("png") ? "png" : mime.includes("webp") ? "webp" : "jpg";
+      const finalName = filename.replace(/\.[a-z0-9]+$/i, "") + "." + ext;
+      return new File([blob], finalName, { type: mime });
+    } catch {
+      return null;
+    }
+  }
+
+  function setFileInputFiles(input, file) {
+    if (!input || !file) return;
+    try {
+      const dt = new DataTransfer();
+      dt.items.add(file);
+      input.files = dt.files;
+      input.dispatchEvent(new Event("change", { bubbles: true }));
+    } catch {}
+  }
+
+  async function applyCollectedPhotosToStudio(makerData) {
+    const items = Array.isArray(makerData?.items) ? makerData.items : [];
+    if (!items.length) return;
+
+    const sectionHeading = [...document.querySelectorAll("h1, h2, h3, h4, div, p, b, strong")].find(el =>
+      !el.id?.startsWith("cp") &&
+      !el.closest("#cpStudioRegSection, #cpEditModal") &&
+      el.children.length <= 2 &&
+      /색상별\s*원본\s*사진/.test((el.innerText || el.textContent || "").replace(/\s+/g, " ").trim())
+    );
+
+    const photoSection =
+      sectionHeading?.closest("section, div[class*='card'], div[class*='box'], div[class*='section']") ||
+      sectionHeading?.parentElement?.parentElement ||
+      document.body;
+
+    const grouped = [];
+    const byColor = new Map();
+    items.forEach(it => {
+      if (!it?.url || it.role === "제외") return;
+      const cKey = (it.color || makerData.colors?.[0] || "색상 1").trim();
+      if (!byColor.has(cKey)) {
+        const entry = { color: cKey, code: it.sourceCode || makerData.code || "", photos: [] };
+        byColor.set(cKey, entry);
+        grouped.push(entry);
+      }
+      byColor.get(cKey).photos.push(it);
+    });
+
+    if (!grouped.length) return;
+
+    const colorLabels = [...photoSection.querySelectorAll("label, span, div, p, b, strong")].filter(el =>
+      !el.id?.startsWith("cp") &&
+      el.children.length <= 2 &&
+      /^색상명/.test((el.innerText || el.textContent || "").replace(/\s+/g, " ").trim())
+    );
+
+    for (let idx = 0; idx < grouped.length; idx++) {
+      const g = grouped[idx];
+      const lbl = colorLabels[idx];
+      const optCard =
+        lbl?.closest("div[style*='border'], div[class*='option'], div[class*='card'], div[class*='box']") ||
+        lbl?.parentElement?.parentElement ||
+        photoSection;
+
+      const colorInput =
+        lbl?.parentElement?.querySelector("input") ||
+        lbl?.closest("div")?.querySelector("input");
+      if (colorInput) setNativeInputValue(colorInput, g.color);
+
+      const codeLabel = [...optCard.querySelectorAll("label, span, div, p, b, strong")].find(el =>
+        el.children.length <= 2 && /옵션\s*품번/.test((el.innerText || el.textContent || "").replace(/\s+/g, " ").trim())
+      );
+      const codeInput = codeLabel?.parentElement?.querySelector("input") || codeLabel?.closest("div")?.querySelector("input");
+      if (codeInput && g.code) setNativeInputValue(codeInput, g.code);
+
+      const fileBoxes = [...optCard.querySelectorAll("div, label")].filter(el =>
+        el.querySelector('input[type="file"]') &&
+        !/색상명|옵션\s*품번/.test((el.innerText || "").slice(0, 20))
+      );
+
+      for (const box of fileBoxes) {
+        const fileInp = box.querySelector('input[type="file"]');
+        if (!fileInp) continue;
+        const boxText = (box.innerText || "").replace(/\s+/g, " ").trim();
+
+        let matchedItem = null;
+        if (/앞면/.test(boxText)) matchedItem = g.photos.find(p => /앞면/.test(p.role));
+        else if (/뒷면/.test(boxText)) matchedItem = g.photos.find(p => /뒷면/.test(p.role));
+        else if (/디테일\s*1/.test(boxText)) matchedItem = g.photos.find(p => /디테일\s*1/.test(p.role));
+        else if (/디테일\s*2/.test(boxText)) matchedItem = g.photos.find(p => /디테일\s*2/.test(p.role));
+        else if (/디테일\s*3/.test(boxText)) matchedItem = g.photos.find(p => /디테일\s*3/.test(p.role));
+        else if (/디테일\s*4/.test(boxText)) matchedItem = g.photos.find(p => /디테일\s*4/.test(p.role));
+        else if (/원단\s*사진/.test(boxText)) matchedItem = g.photos.find(p => /원단/.test(p.role));
+
+        if (matchedItem?.url) {
+          const file = await urlToFile(matchedItem.url, `${g.color}_${matchedItem.key || "img"}.jpg`);
+          if (file) {
+            setFileInputFiles(fileInp, file);
+            const noFileNode = [...box.querySelectorAll("span, small, p, div")].find(n =>
+              n.children.length === 0 && /선택된\s*파일\s*없음/.test((n.textContent || "").trim())
+            );
+            if (noFileNode) noFileNode.textContent = file.name;
+          }
+        }
+      }
+    }
+  }
+
   function readGeneratedStudioAssets() {
     let thumbUrl = "";
     let detailImgUrl = "";
@@ -1119,6 +1232,8 @@
       discountPrice: Number(storageData.discountPrice) || 0,
       regularPrice: Number(storageData.regularPrice) || 0,
       options: collectedOptions,
+      colors: Array.isArray(storageData.colors) ? storageData.colors : colorsFromOpts,
+      items: Array.isArray(storageData.items) ? storageData.items : [],
       seoTags: autoTags,
       measuredSizes: storageData.measuredSizes || null,
       notice: mergedNotice,
@@ -1174,6 +1289,9 @@
     }
     if (d.notice?.material) {
       applyFabricMaterialToStudio(d.notice.material);
+    }
+    if (Array.isArray(d.items) && d.items.length) {
+      await applyCollectedPhotosToStudio(d);
     }
     studioMarginCtrl.update();
     if (showToast) alert("📥 확장프로그램 수집값(옵션·고시정보·가격·실측사이즈·소재·SEO태그·상품명·이미지)을 반영했습니다!");
