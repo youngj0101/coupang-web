@@ -351,9 +351,10 @@
     }
   }
 
-  async function urlToFile(url, filename = "image.jpg") {
+  async function urlToFile(urlOrDataUrl, filename = "image.jpg") {
+    if (!urlOrDataUrl) return null;
     try {
-      const res = await fetch(url, { mode: "cors" });
+      const res = await fetch(urlOrDataUrl);
       if (res.ok) {
         const blob = await res.blob();
         const mime = blob.type || "image/jpeg";
@@ -361,34 +362,7 @@
         return new File([blob], filename.replace(/\.[a-z0-9]+$/i, "") + "." + ext, { type: mime });
       }
     } catch {}
-
-    // CORS fetch 실패 시 Image 객체로 로드 후 Canvas 변환 시도
-    try {
-      const file = await new Promise((resolve, reject) => {
-        const im = new Image();
-        im.crossOrigin = "anonymous";
-        im.onload = () => {
-          try {
-            const c = document.createElement("canvas");
-            c.width = im.naturalWidth || im.width || 600;
-            c.height = im.naturalHeight || im.height || 600;
-            const ctx = c.getContext("2d");
-            ctx.drawImage(im, 0, 0);
-            c.toBlob(b => {
-              if (!b) return reject(new Error("toBlob null"));
-              resolve(new File([b], filename.replace(/\.[a-z0-9]+$/i, "") + ".jpg", { type: "image/jpeg" }));
-            }, "image/jpeg", 0.9);
-          } catch (e) {
-            reject(e);
-          }
-        };
-        im.onerror = () => reject(new Error("img load fail"));
-        im.src = url;
-      });
-      return file;
-    } catch {
-      return null;
-    }
+    return null;
   }
 
   function setFileInputFiles(input, file) {
@@ -450,14 +424,15 @@
     const grouped = [];
     const byColor = new Map();
     items.forEach(it => {
-      if (!it?.url || it.role === "제외") return;
+      const imgSrc = it?.dataUrl || it?.url;
+      if (!imgSrc || it.role === "제외") return;
       const cKey = (it.color || makerData.colors?.[0] || "색상 1").trim();
       if (!byColor.has(cKey)) {
         const entry = { color: cKey, code: it.sourceCode || makerData.code || "", photos: [] };
         byColor.set(cKey, entry);
         grouped.push(entry);
       }
-      byColor.get(cKey).photos.push(it);
+      byColor.get(cKey).photos.push({ ...it, imgSrc });
     });
 
     if (!grouped.length) return;
@@ -488,9 +463,9 @@
         const slotRole = detectSlotRole(fInp);
         if (!slotRole) continue;
         const matched = g.photos.find(p => p.role === slotRole);
-        if (!matched?.url) continue;
+        if (!matched?.imgSrc) continue;
 
-        const file = await urlToFile(matched.url, `${g.color}_${matched.key || slotRole}.jpg`);
+        const file = await urlToFile(matched.imgSrc, `${g.color}_${matched.key || slotRole}.jpg`);
         if (file) {
           setFileInputFiles(fInp, file);
           const slotWrap = fInp.closest("div")?.parentElement || fInp.parentElement;
@@ -1460,8 +1435,8 @@
     menuButtons.forEach(btn => btn.classList.toggle("active", btn.dataset.view === viewName));
     titleEl.textContent = titles[viewName] || "";
     const isStudio = viewName === "studio";
-    if (studioMain) studioMain.hidden = !isStudio;
-    studioRegSection.hidden = !isStudio;
+    if (studioMain) studioMain.style.display = isStudio ? "" : "none";
+    studioRegSection.style.display = isStudio ? "" : "none";
     listView.hidden = isStudio;
     if (isStudio) {
       syncFromStudioPanel(false, false);
@@ -1469,6 +1444,7 @@
       scrollPageToTop();
     } else {
       fetchProducts();
+      scrollPageToTop();
     }
   }
 
