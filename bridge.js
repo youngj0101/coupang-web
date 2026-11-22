@@ -5,12 +5,7 @@ const source=document.getElementById('lfSource');
 const result=document.getElementById('lfResult');
 const roleIndex={'앞면':0,'뒷면':1,'디테일 1':2,'디테일 2':3,'디테일 3':4,'디테일 4':5,'원단 사진':6};
 
-async function toFile(x){
-  const r=await fetch(x.url);
-  if(!r.ok) throw new Error(`이미지 다운로드 실패 (${r.status})`);
-  const b=await r.blob();
-  return new File([b],`${data.code}_${x.color}_${x.key}.jpg`,{type:b.type||'image/jpeg'});
-}
+async function toFile(x){const rid=crypto.randomUUID();const reply=await new Promise((resolve,reject)=>{const finish=()=>{window.removeEventListener('message',on);clearTimeout(timer)};const on=e=>{if(e.source===window&&e.origin===location.origin&&e.data?.type==='LF29_PHOTO_RESULT'&&e.data.rid===rid){finish();resolve(e.data)}};const timer=setTimeout(()=>{finish();reject(Error('이미지 연결 시간 초과'))},22000);window.addEventListener('message',on);window.postMessage({type:'LF29_PHOTO',rid,id:data.id,url:x.url},location.origin)});if(!reply.ok)throw Error(reply.error||'원본 이미지를 불러오지 못했습니다');const blob=await (await fetch(reply.data)).blob();return new File([blob],data.code+'_'+x.key+'.'+(blob.type.split('/')[1]||'jpg'),{type:blob.type})}
 async function put(input,file){
   const d=new DataTransfer();
   d.items.add(file);
@@ -32,40 +27,74 @@ function groups(){
   }
   return [...map.entries()];
 }
+const wait=ms=>new Promise(resolve=>setTimeout(resolve,ms));
+async function waitForOptionCount(count,timeout=3000){
+  const started=Date.now();
+  while(Date.now()-started<timeout){
+    const boxes=[...document.querySelectorAll('fieldset.opt')];
+    if(boxes.length>=count)return boxes;
+    await wait(50);
+  }
+  throw new Error(`색상 입력 영역 생성 지연 (${count}개 필요)`);
+}
 async function applyAll(){
   if(!data)return alert('LF몰에서 받은 이미지가 없습니다.');
   result.textContent='색상별 이미지를 적용하고 있습니다...';
   try{
     const colorGroups=groups();
     const addButton=[...document.querySelectorAll('button')].find(b=>b.textContent.trim()==='+ 색상 추가');
-    while(document.querySelectorAll('fieldset.opt').length<colorGroups.length){
+    let currentCount=document.querySelectorAll('fieldset.opt').length;
+    while(currentCount<colorGroups.length){
       if(!addButton)throw new Error('색상 추가 버튼을 찾지 못했습니다.');
       addButton.click();
+      currentCount++;
+      await waitForOptionCount(currentCount);
     }
-    const optionBoxes=[...document.querySelectorAll('fieldset.opt')];
+    const optionBoxes=await waitForOptionCount(colorGroups.length);
+    let expectedCount=0;
+    let appliedCount=0;
+    const skipped=[];
     for(let gi=0;gi<colorGroups.length;gi++){
       const [color,items]=colorGroups[gi];
       const box=optionBoxes[gi];
+      if(!box)throw new Error(`${color} 색상 입력 영역을 찾지 못했습니다.`);
       setValue(box.querySelector('input[placeholder="예: 블랙"]'),color);
       const inputs=[...box.querySelectorAll('input[type=file]')];
+      const used=new Set(), overflow=[];
       for(const x of items){
-        if(roleIndex[x.role]!==undefined&&inputs[roleIndex[x.role]]){
-          await put(inputs[roleIndex[x.role]],await toFile(x));
-        }
+        const idx=roleIndex[x.role];
+        if(idx===undefined)continue;
+        if(used.has(idx)){overflow.push(x);continue}used.add(idx);
+        expectedCount++;
+        if(!inputs[idx]){skipped.push(`${color}/${x.role}: 입력칸 없음`);continue;}
+        await put(inputs[idx],await toFile(x));
+        if(inputs[idx].files?.length===1)appliedCount++;
+        else skipped.push(`${color}/${x.role}: 적용 확인 실패`);
       }
-      const extras=items.filter(x=>x.role==='추가 디테일');
-      if(extras.length&&inputs[7]){
-        const d=new DataTransfer();
-        for(const x of extras)d.items.add(await toFile(x));
-        inputs[7].files=d.files;
-        inputs[7].dispatchEvent(new Event('change',{bubbles:true}));
+      const extras=items.filter(x=>x.role==='추가 디테일').concat(overflow);
+      expectedCount+=extras.length;
+      if(extras.length){
+        if(!inputs[7])skipped.push(`${color}/추가 디테일 ${extras.length}장: 입력칸 없음`);
+        else{
+          const d=new DataTransfer();
+          for(const x of extras)d.items.add(await toFile(x));
+          inputs[7].files=d.files;
+          inputs[7].dispatchEvent(new Event('change',{bubbles:true}));
+          const verified=inputs[7].files?.length||0;
+          appliedCount+=verified;
+          if(verified!==extras.length)skipped.push(`${color}/추가 디테일: ${verified}/${extras.length}장만 확인`);
+        }
       }
     }
     const title=data.title||'';
     const brand=title.match(/닥스|헤지스|질스튜어트|마에스트로|알레그리/i)?.[0]||'';
     setValue(document.querySelector('input[placeholder="닥스"]'),brand);
     setValue(document.querySelector('input[placeholder="DMSW6D301BK"]'),data.code);
-    result.textContent=`적용 완료: ${colorGroups.length}개 색상, ${data.items.length}장`;
+    if(skipped.length||appliedCount!==expectedCount){
+      result.textContent=`부분 적용: ${colorGroups.length}개 색상, ${appliedCount}/${expectedCount}장 확인 · ${skipped.join(' / ')}`;
+    }else{
+      result.textContent=`적용 완료 및 확인됨: ${colorGroups.length}개 색상, ${appliedCount}장`;
+    }
   }catch(e){
     console.error(e);
     result.textContent='적용 실패: '+e.message;
@@ -85,7 +114,7 @@ function setupSizeTemplates(){
   table.parentElement.insertBefore(bar,table);
   const fill=name=>{const values=templates[name];if(!values)return alert('해당 여성 기본표는 아직 등록되지 않았습니다.');rows.replaceChildren();for(const vals of values){add.click();const ins=rows.lastElementChild.querySelectorAll('input');vals.forEach((v,i)=>{ins[i].value=v;ins[i].dispatchEvent(new Event('input',{bubbles:true}))})}bar.querySelector('b').textContent=name+' 기본 사이즈표'};
   bar.querySelector('#lfFillSize').onclick=()=>fill(bar.querySelector('#lfGender').value+' '+bar.querySelector('#lfSizeKind').value);
-  if(![...rows.querySelectorAll('input')].some(x=>x.value.trim()))fill('남성 숏패딩');
+  // Only use measurements from the selected item.
 }
 function setupColorTextRule(){
   const apply=box=>{const name=box.querySelector('input[placeholder="예: 블랙"]')?.value.trim().toLowerCase()||'';if(/블랙|검정|black|그레이|회색|grey|gray|차콜/.test(name)){const colors=box.querySelectorAll('input[type=color]');if(colors[1]){colors[1].value='#ffffff';colors[1].dispatchEvent(new Event('input',{bubbles:true}));colors[1].dispatchEvent(new Event('change',{bubbles:true}))}}};
@@ -105,13 +134,6 @@ function setupCheckPointBuilder(){
 function setupFabricDefaults(){const vals=['보통','보통','보통','없음','없음'];vals.forEach((v,i)=>{const s=document.getElementById('fabricVal'+i);if(s){s.value=v;s.dispatchEvent(new Event('change',{bubbles:true}))}})}
 function setupBanners(){const bind=(fileId,imgId,resetId,key)=>{const input=document.getElementById(fileId),img=document.getElementById(imgId),reset=document.getElementById(resetId),saved=localStorage.getItem(key);if(saved)img.src=saved;input?.addEventListener('change',()=>{const file=input.files?.[0];if(!file)return;const r=new FileReader();r.onload=()=>{img.src=r.result;try{localStorage.setItem(key,r.result)}catch{alert('배너 파일이 너무 큽니다. JPG로 줄여서 다시 선택하세요.')}};r.readAsDataURL(file)});reset?.addEventListener('click',()=>{localStorage.removeItem(key);img.removeAttribute('src');input.value=''})};bind('topBannerFile','topBannerPreview','topBannerReset','lfTopBanner');bind('endBannerFile','endBannerPreview','endBannerReset','lfEndBanner')}
 document.getElementById('lfLoad').addEventListener('click',applyAll);
-setupSizeTemplates();setupColorTextRule();setupCheckPointBuilder();setupFabricDefaults();setupBanners();
-chrome.storage.local.get('lfMakerData',o=>{
-  data=o.lfMakerData;
-  if(!data){source.textContent='받은 이미지가 없습니다. LF몰 상품 페이지에서 다시 보내주세요.';return;}
-  const colorCount=new Set(data.items.map(x=>x.color||'색상 1')).size;
-  source.textContent=`${data.code} · ${colorCount}개 색상 · ${data.items.length}장`;
-  cards.innerHTML=data.items.map(x=>`<div class="lfInCard"><img src="${x.url}"><div><b>${x.color||'색상 1'} · ${x.role}</b><br><small>${x.key}</small></div></div>`).join('');
-  setTimeout(applyAll,100);
-});
+setupSizeTemplates();setupColorTextRule();setupCheckPointBuilder();setupBanners();
+window.LF29Mount=async d=>{data=d;cards.replaceChildren();source.textContent=d.code+' · '+d.colors.join(', ')+' · '+d.items.length+'장';for(const x of d.items){const el=document.createElement('div');el.className='lfInCard';const im=document.createElement('img');im.src=x.url;im.alt=x.role;el.append(im,document.createTextNode(x.color+' · '+x.role));cards.append(el)}await applyAll()};
 })();

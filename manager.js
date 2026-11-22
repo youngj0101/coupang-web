@@ -67,20 +67,7 @@
   let latestMaterialText = "";
   let initialScrollLocked = false;
 
-  try {
-    const cached = localStorage.getItem("lfMakerDataBridge");
-    if (cached) bridgeMakerData = JSON.parse(cached);
-  } catch {}
-
-  window.addEventListener("message", e => {
-    if (e.data?.type === "LF_MAKER_DATA_SYNC" && e.data.data) {
-      bridgeMakerData = e.data.data;
-      try { localStorage.setItem("lfMakerDataBridge", JSON.stringify(bridgeMakerData)); } catch {}
-      syncFromStudioPanel(false, true);
-      if (document.getElementById("cpCollectView")) updateCollectView();
-    }
-  });
-
+  let archive = [], connected = false, pendingId = new URL(location.href).searchParams.get('make'), mounting=false;
   function loadAuth() {
     try { return JSON.parse(localStorage.getItem(AUTH_STORAGE_KEY)) || null; }
     catch { return null; }
@@ -788,6 +775,16 @@
     .cp-ready-box{padding:16px;border:1px solid #dce6df;border-radius:12px;background:#f5f9f6}.cp-ready-title{font-size:13px;color:var(--cp-muted)}.cp-ready-name{font-size:17px;font-weight:760;margin:7px 0}.cp-ready-meta{font-size:13px;color:var(--cp-muted);line-height:1.7}.cp-rule-list{display:grid;gap:10px;margin-top:14px}.cp-rule{display:flex;justify-content:space-between;gap:12px;padding:11px 0;border-bottom:1px solid #edf0ee;font-size:13px}.cp-rule strong{color:var(--cp-green)}
     #cpListView .cp-excel-btn{display:none !important}@media(max-width:900px){.cp-metric-grid{grid-template-columns:repeat(2,1fr)}.cp-collect-grid{grid-template-columns:1fr}#cpContent{padding:20px}}
   `;
+  style.textContent += `
+    body{background:#e6eeea !important;}#cpTopBar{left:194px !important;height:54px !important;background:#f8faf9 !important;border-bottom:1px solid #d6dfda !important}.cp-brand-wrap{margin-left:18px}.cp-brand-logo{display:none !important}.cp-brand-title{color:#2d3933 !important;font-size:13px !important}.cp-top-right{margin-right:18px}
+    #cpLayout{padding-top:54px !important}.cp-side-brand{display:flex;align-items:center;gap:8px;padding:4px 8px 18px;font-size:18px;color:#10271d}.cp-side-mark{font-size:22px;color:#174d39}.cp-side-gear{margin-left:auto;border:0;background:transparent;color:#7c8882;cursor:pointer}.cp-step-card{background:#fff;border:1px solid #dbe2de;border-radius:8px;padding:13px;margin:0 0 14px;box-shadow:0 2px 5px rgba(20,45,32,.08)}.cp-step-card strong{font-size:12px}.cp-step-track{height:4px;background:#e4e8e5;border-radius:10px;margin-top:10px;overflow:hidden}.cp-step-track span{display:block;height:100%;background:#22633f;border-radius:10px;transition:.25s}.cp-step-label{font-size:11px;color:#7a857f;padding:5px 10px}.cp-menu-item{min-height:54px !important}.cp-menu-item span:last-child{display:flex;flex-direction:column;gap:2px}.cp-menu-item b{font-size:13px}.cp-menu-item small{font-size:10px;font-weight:500;color:#748079}.cp-menu-item.active small{color:#d9eadf}.cp-menu-item.active{background:#174d39 !important;color:#fff !important}.cp-menu-item.active .cp-nav-num{background:transparent !important;border:0 !important}.cp-side-link{display:block;width:100%;border:0;background:transparent;text-align:left;padding:8px 12px;color:#3e4944;font-size:12px;cursor:pointer}.cp-sidebar-footer{margin-top:auto !important}
+    #cpSidebar{width:194px !important;top:0 !important;padding:16px 10px !important;z-index:10002 !important}#cpContent{margin-left:194px !important;padding:28px !important;background:#f3f6f4 !important;min-height:calc(100vh - 54px)}
+    .cp-page-crumb{font-size:11px;color:#748079;margin-bottom:18px}.cp-page-heading{font-size:18px !important;font-weight:800;margin-bottom:10px !important}.cp-url-row{display:flex;align-items:stretch;gap:8px;margin-bottom:22px}.cp-url-row textarea{flex:1;resize:none;border:1px solid #cad4ce;border-radius:6px;padding:12px;font:inherit;background:#fff}.cp-url-row button{min-width:150px}.cp-section-line{display:flex;align-items:center;justify-content:space-between;border-top:1px solid #d6ded9;padding-top:13px;margin-bottom:10px}.cp-section-line h2{font-size:14px;margin:0}.cp-section-line h2 span{color:#7a857f;font-weight:500}.cp-list-tools{display:flex;align-items:center;gap:8px;font-size:11px}.cp-list-tools input[placeholder]{width:130px;border:1px solid #ccd5d0;border-radius:6px;padding:7px 9px}.cp-product-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;max-height:calc(100vh - 260px);overflow:auto;padding-right:4px}.cp-product-card{background:#fff;border:1px solid #d4ddd8;border-radius:7px;padding:7px;box-shadow:0 1px 3px rgba(25,45,35,.05)}.cp-card-status{display:flex;justify-content:space-between;align-items:center;font-size:10px;margin-bottom:6px}.cp-card-status span{padding:3px 6px;border-radius:10px}.cp-card-status .success{background:#dcefe2;color:#176335}.cp-card-status .review{background:#ecebea;color:#646b67}.cp-card-status b{color:#8c4739}.cp-product-main{height:145px;background:#f0f1ef;border-radius:5px;overflow:hidden}.cp-product-main img{width:100%;height:100%;object-fit:contain}.cp-thumb-row{display:grid;grid-template-columns:repeat(5,1fr);gap:3px;margin:5px 0}.cp-thumb-row img{width:100%;height:38px;object-fit:cover;border-radius:4px;background:#eee}.cp-product-info{display:flex;flex-direction:column;gap:2px;font-size:10px;min-height:82px}.cp-product-info b{font-size:11px;line-height:1.35}.cp-product-info span,.cp-product-info p{margin:0;color:#4c5751}.cp-send-studio{width:100%;border:1px solid #2d6845;background:#fff;color:#174d39;border-radius:5px;padding:7px;font-weight:700;font-size:10px;cursor:pointer}.cp-send-studio:hover{background:#174d39;color:#fff}.cp-empty-card{grid-column:1/-1;background:#fff;border:1px dashed #bdcac3;border-radius:8px;padding:60px;text-align:center;color:#748079}
+    #cpLayout[data-view="studio"] #cpContent{display:grid !important;grid-template-columns:minmax(500px,.9fr) minmax(580px,1.1fr);align-items:start;gap:16px}#cpLayout[data-view="studio"] #cpStudioRegSection{grid-column:1;margin:0 !important;max-width:none !important}#cpLayout[data-view="studio"] #cpContent>main{grid-column:2;margin:0 !important;max-width:none !important}.cp-studio-reg-card{border-top:1px solid var(--cp-line) !important}.cp-studio-reg-card .cp-card-head h2{font-size:18px}.cp-studio-reg-card input:not([type=checkbox]),.cp-studio-reg-card select,.cp-studio-reg-card textarea{background:#fff !important;border-color:#ccd5d0 !important}.cp-margin-box{background:#f5f7f5 !important;border-color:#d8dfdb !important}
+    #cpListView .cp-list-card{padding:16px !important;max-width:none !important}.cp-toolbar{border:1px solid #d6ded9;border-radius:8px;padding:12px;background:#fff}.cp-table{min-width:1050px !important;font-size:11px !important}.cp-table th{background:#f1f4f2 !important;color:#25342c !important}.cp-table th,.cp-table td{padding:9px 6px !important}.cp-edit-btn,.cp-del-btn{background:#f4f5f4 !important;color:#34423b !important;border:1px solid #d2d9d5 !important}
+    @media(max-width:1250px){.cp-product-grid{grid-template-columns:repeat(3,1fr)}#cpLayout[data-view="studio"] #cpContent{display:flex !important}}@media(max-width:850px){#cpSidebar{width:170px !important}#cpTopBar{left:170px !important}#cpContent{margin-left:170px !important}.cp-product-grid{grid-template-columns:repeat(2,1fr)}}
+  `;
+  style.textContent+=`#cpLayout:not([data-view="studio"]) #cpContent>main,#cpLayout:not([data-view="studio"]) #cpStudioRegSection,#cpLayout:not([data-view="collect"]) #cpCollectView,#cpLayout:not([data-view="stock"]) #cpListView,body>.appTop{display:none!important}.cp-product-info{font-size:12px;gap:5px}.lf29-stock{font-size:12px;line-height:1.65;white-space:pre-line}.lf29-note{font-size:13px;color:#465b50}.cp-product-grid .cp-product-card{display:flex;flex-direction:column;gap:6px}.cp-product-info a{color:#235b42}.cp-product-info{flex:1}`;
   document.head.appendChild(style);
 
   const studioMain = document.querySelector("main");
@@ -796,7 +793,7 @@
   topBar.id = "cpTopBar";
   topBar.innerHTML = `
     <div class="cp-brand-wrap"><span class="cp-brand-logo">LF</span><span class="cp-brand-title" id="cpCurrentTitle">상품 수집</span></div>
-    <div class="cp-top-right"><button type="button" id="btnQuickSave" class="cp-sync-btn">현재 상품 저장</button></div>
+    <div class="cp-top-right"><button type="button" id="btnQuickSave" class="cp-sync-btn">재고 관리에 등록</button></div>
   `;
 
   const layout = document.createElement("div");
@@ -805,12 +802,13 @@
   const sidebar = document.createElement("aside");
   sidebar.id = "cpSidebar";
   sidebar.innerHTML = `
-    <div class="cp-nav-caption">PRODUCT WORKFLOW</div>
-    <button type="button" class="cp-menu-item active" data-view="collect"><span class="cp-nav-num">01</span><span>상품 수집</span></button>
-    <button type="button" class="cp-menu-item" data-view="studio"><span class="cp-nav-num">02</span><span>상품 제작</span></button>
-    <button type="button" class="cp-menu-item" data-view="stock"><span class="cp-nav-num">03</span><span>재고 관리</span></button>
-    <div class="cp-sidebar-divider"></div>
-    <div class="cp-sidebar-footer"><div style="font-weight:700;color:#174d39;">실시간 연동 중</div><div id="cpUserEmail" style="margin-top:6px;font-weight:650;color:#56615c;"></div><button type="button" id="btnLogout" class="cp-side-btn">로그아웃</button></div>
+    <div class="cp-side-brand"><span class="cp-side-mark">◇</span><strong>쿠팡 자동화</strong></div>
+    <div class="cp-step-card"><div><strong id="cpStepText">1 / 3 (33%) 완료</strong></div><div class="cp-step-track"><span id="cpStepBar"></span></div></div>
+    <div class="cp-step-label">진행 단계</div>
+    <button type="button" class="cp-menu-item active" data-view="collect"><span class="cp-nav-num">1</span><span><b>상품 수집</b><small>LF몰 후보 수집·보관</small></span></button>
+    <button type="button" class="cp-menu-item" data-view="studio"><span class="cp-nav-num">2</span><span><b>상품 제작</b><small>상세페이지·옵션·사이즈표</small></span></button>
+    <button type="button" class="cp-menu-item" data-view="stock"><span class="cp-nav-num">3</span><span><b>재고 관리</b><small>상품 리스트·수정 관리</small></span></button>
+    <div class="cp-sidebar-divider"></div><div class="cp-sidebar-footer"><div id="cpUserEmail"></div><button type="button" id="btnLogout" class="cp-side-btn">로그아웃</button></div>
   `;
 
   const content = document.createElement("div");
@@ -818,12 +816,7 @@
 
   const collectView = document.createElement("section");
   collectView.id = "cpCollectView";
-  collectView.innerHTML = `
-    <h1 class="cp-page-heading">상품 수집</h1><p class="cp-page-desc">LF몰에서 수집한 상품을 확인하고 제작실로 전달합니다.</p>
-    <div class="cp-metric-grid"><div class="cp-metric"><div class="cp-metric-label">수집된 색상</div><div class="cp-metric-value" id="cpCollectColors">0</div></div><div class="cp-metric"><div class="cp-metric-label">수집 이미지</div><div class="cp-metric-value" id="cpCollectImages">0</div></div><div class="cp-metric"><div class="cp-metric-label">옵션 수</div><div class="cp-metric-value" id="cpCollectOptions">0</div></div><div class="cp-metric"><div class="cp-metric-label">확인 필요</div><div class="cp-metric-value" id="cpCollectWarnings">0</div></div></div>
-    <div class="cp-collect-grid"><div class="cp-card"><div class="cp-card-head"><div><h2 style="margin:0;font-size:19px;">LF몰 상품 가져오기</h2><p style="margin:7px 0 0;color:#6f7b75;font-size:13px;">LF몰 상품 페이지에서 확장 프로그램의 이미지 수집 버튼을 사용하세요.</p></div></div><div class="cp-collect-url"><input id="cpCollectedUrl" readonly placeholder="수집된 상품 URL이 여기에 표시됩니다"><button type="button" id="btnCollectSync" class="cp-primary-btn">수집값 불러오기</button></div><div class="cp-ready-box"><div class="cp-ready-title">최근 수집 상품</div><div class="cp-ready-name" id="cpCollectedName">아직 수집된 상품이 없습니다</div><div class="cp-ready-meta" id="cpCollectedMeta">LF몰에서 상품을 수집하면 색상, 옵션과 이미지 현황이 표시됩니다.</div></div><div style="display:flex;justify-content:flex-end;margin-top:16px;"><button type="button" id="btnGoStudio" class="cp-primary-btn">상품 제작 시작</button></div></div><aside class="cp-card"><h2 style="margin:0;font-size:18px;">수집 설정</h2><div class="cp-rule-list"><div class="cp-rule"><span>착용 이미지</span><strong>자동 제외</strong></div><div class="cp-rule"><span>중복 상품</span><strong>자동 감지</strong></div><div class="cp-rule"><span>재고 미확인</span><strong>0개 처리</strong></div><div class="cp-rule"><span>추정 가격</span><strong>확인 표시</strong></div></div></aside></div>
-  `;
-
+  collectView.innerHTML=`<h1 class="cp-page-heading">상품 수집 보관함</h1><p class="lf29-note">LF몰 상품 페이지에서 ‘이 상품 저장’을 누르면 여기에 누적됩니다. 같은 품번과 색상을 다시 수집하면 해당 카드만 갱신됩니다.</p><div class="cp-section-line"><h2>보관 상품 <span id="cpCollectTotal"></span></h2><div class="cp-list-tools"><input id="cpCollectSearch" aria-label="보관 상품 검색" placeholder="상품명·품번·색상"><button id="btnCollectSync" type="button">목록 새로고침</button></div></div><p id="lfConnection" role="status"></p><div id="cpCollectedGrid" class="cp-product-grid"></div>`;
   const listView = document.createElement("div");
   listView.id = "cpListView";
   listView.hidden = true;
@@ -831,7 +824,7 @@
   listView.innerHTML = `
     <div class="cp-card cp-list-card">
       <div class="cp-card-head">
-        <div><h1 class="cp-page-heading" style="font-size:26px;">재고 관리</h1><p class="cp-page-desc" style="margin-bottom:0;">제작된 상품의 재고와 상태를 관리합니다. 총 <span id="mCount">0</span>개</p></div>
+        <div><h1 class="cp-page-heading" style="font-size:26px;">3. 재고 관리 · 상품 리스트</h1><p class="cp-page-desc" style="margin-bottom:0;">제작된 상품의 재고와 상태를 관리합니다. 총 <span id="mCount">0</span>개</p></div>
         <div style="display:flex;gap:8px;flex-wrap:wrap;">
           <button type="button" id="btnExportExcel" class="cp-excel-btn">📥 쿠팡 일괄등록 엑셀 다운로드</button>
           <button type="button" id="btnRefresh" class="cp-primary-btn">새로고침</button>
@@ -839,28 +832,14 @@
       </div>
       <div class="cp-toolbar">
         <select id="mMonthFilter"><option value="ALL">전체 월 보기</option></select>
-        <select id="mFilter">
-          <option value="ALL">전체 상태 보기</option>
-          <option value="수집완료">수집완료</option>
-          <option value="상세페이지 제작중">상세페이지 제작중</option>
-          <option value="업로드 완료">업로드 완료</option>
-        </select>
+        <select id="mFilter"><option value="ALL">등록 상품 전체</option><option value="zero">판매 재고 0 포함</option><option value="review">확인 필요 포함</option></select>
         <input id="mSearch" type="text" placeholder="상품명, 품번, 태그 검색...">
       </div>
       <div class="cp-table-wrap">
         <table class="cp-table">
           <thead>
             <tr>
-              <th style="width:48px;text-align:center;">순번</th>
-              <th style="width:94px;">업로드 날짜</th>
-              <th style="min-width:220px;">상품명 (쿠팡 / LF몰)</th>
-              <th style="width:72px;">상품링크</th>
-              <th style="width:125px;">품번</th>
-              <th style="width:96px;text-align:right;">최대혜택가(소싱)</th>
-              <th style="width:130px;text-align:right;">쿠팡 판매가 / 마진</th>
-              <th style="width:96px;text-align:right;">정가</th>
-              <th style="width:136px;">상태</th>
-              <th style="width:102px;">관리</th>
+              <th>대표 이미지</th><th>등록일</th><th>상품명 / 품번</th><th>LF몰</th><th>색상 · 사이즈</th><th>판매 재고</th><th>최대혜택가</th><th>정가</th><th>판매가</th><th>관리</th>
             </tr>
           </thead>
           <tbody id="mTableBody"></tbody>
@@ -978,13 +957,13 @@
   studioRegSection.className = "cp-card cp-studio-reg-card";
   studioRegSection.innerHTML = `
     <div class="cp-card-head">
-      <h2 style="margin:0;">상품 제작 정보</h2>
+      <h2 style="margin:0;">2. 상품 제작 정보</h2>
       <button type="button" id="btnSyncFromStudio" class="cp-sub-btn">수집값 자동 반영</button>
     </div>
     ${buildFormHTML("s", true)}
     <div style="display:flex;justify-content:flex-end;gap:10px;margin-top:10px;">
       <button type="button" id="btnResetStudioReg" class="cp-cancel-btn">입력 초기화</button>
-      <button type="button" id="btnSaveFromStudioSection" class="cp-primary-btn">상품 저장하기</button>
+      <button type="button" id="btnSaveFromStudioSection" class="cp-primary-btn">재고 관리에 등록</button>
     </div>
   `;
 
@@ -1029,11 +1008,11 @@
   document.body.appendChild(loginOverlay);
 
   cleanUnwantedUI();
-  window.postMessage({ type: "REQUEST_LF_MAKER_DATA" }, "*");
+  
   setTimeout(() => {
     cleanUnwantedUI();
     scrollPageToTop();
-    window.postMessage({ type: "REQUEST_LF_MAKER_DATA" }, "*");
+    
   }, 300);
 
   document.addEventListener("input", e => {
@@ -1097,11 +1076,13 @@
     const tbody = document.getElementById(`${p}OptBody`);
     function addRow(opt = { color: "", code: "", size: "", stock: 0 }) {
       const safeStock = clampStock(opt.stock ?? 0);
+      const esc=v=>String(v??" ").trim().replace(/&/g,"&amp;").replace(/"/g,"&quot;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
       const tr = document.createElement("tr");
+      tr.dataset.stockStatus=opt.stockStatus||"unknown";
       tr.innerHTML = `
-        <td><input type="text" class="opt-color" placeholder="예: 블랙" value="${opt.color || ""}"></td>
-        <td><input type="text" class="opt-code" placeholder="예: DMSW6D301BK" value="${opt.code || ""}"></td>
-        <td><input type="text" class="opt-size" placeholder="예: 100" value="${opt.size || ""}"></td>
+        <td><input type="text" class="opt-color" placeholder="예: 블랙" value="${esc(opt.color)}"></td>
+        <td><input type="text" class="opt-code" placeholder="예: DMSW6D301BK" value="${esc(opt.code)}"></td>
+        <td><input type="text" class="opt-size" placeholder="예: 100" value="${esc(opt.size)}"></td>
         <td><input type="number" class="opt-stock" min="0" max="${MAX_STOCK}" value="${safeStock}"></td>
         <td><button type="button" class="cp-opt-del-btn">×</button></td>
       `;
@@ -1109,6 +1090,7 @@
         if (tbody.children.length > 1) tr.remove();
         else tr.querySelectorAll("input").forEach(i => (i.value = i.classList.contains("opt-stock") ? 0 : ""));
       });
+      tr.querySelector(".opt-stock").oninput=()=>tr.dataset.stockStatus="manual";
       tbody.appendChild(tr);
     }
     document.getElementById(`${p}BtnAddOpt`).addEventListener("click", () => {
@@ -1132,6 +1114,7 @@
           color: tr.querySelector(".opt-color").value.trim(),
           code: tr.querySelector(".opt-code").value.trim(),
           size: tr.querySelector(".opt-size").value.trim(),
+          stockStatus:tr.dataset.stockStatus||"unknown",
           stock: clampStock(tr.querySelector(".opt-stock").value)
         })).filter(o => o.color || o.code || o.size);
       }
@@ -1217,18 +1200,8 @@
     const firstImg = document.querySelector("#lfReceived img")?.src || "";
     const generatedAssets = readGeneratedStudioAssets();
 
-    let storageData = bridgeMakerData || {};
-    if (!Object.keys(storageData).length && typeof chrome !== "undefined" && chrome.storage?.local) {
-      storageData = await new Promise(r => chrome.storage.local.get("lfMakerData", o => r(o.lfMakerData || {})));
-    }
-    if (!Object.keys(storageData).length) {
-      try {
-        const cached = localStorage.getItem("lfMakerDataBridge");
-        if (cached) storageData = JSON.parse(cached);
-      } catch {}
-    }
-
-    const defaultName = [brand, kind, code].filter(Boolean).join(" ") || storageData.lfName || storageData.title || "";
+    const storageData=bridgeMakerData||{};
+    const defaultName = storageData.lfName || storageData.title || [brand,kind,code].filter(Boolean).join(" ");
     const collectedOptions = (Array.isArray(storageData.options) && storageData.options.length)
       ? storageData.options.map(o => ({ ...o, stock: clampStock(o.stock ?? 0) }))
       : (code ? [{ color: "", code, size: "", stock: 0, stockStatus: "unknown", requiresReview: true }] : []);
@@ -1276,7 +1249,7 @@
 
   async function syncFromStudioPanel(showToast = true, overwrite = false) {
     cleanUnwantedUI();
-    window.postMessage({ type: "REQUEST_LF_MAKER_DATA" }, "*");
+    
     const d = await readStudioAndExtensionData();
     if (d.brand && (overwrite || !document.getElementById("sBrand").value)) {
       document.getElementById("sBrand").value = d.brand;
@@ -1323,9 +1296,7 @@
     if (d.notice?.material) {
       applyFabricMaterialToStudio(d.notice.material);
     }
-    if (Array.isArray(d.items) && d.items.length) {
-      await applyCollectedPhotosToStudio(d);
-    }
+
     studioMarginCtrl.update();
     if (showToast) alert("📥 확장프로그램 수집값(옵션·고시정보·가격·실측사이즈·소재·SEO태그·상품명·이미지)을 반영했습니다!");
   }
@@ -1348,7 +1319,7 @@
     if (authState?.idToken) {
       loginOverlay.hidden = true;
       document.getElementById("cpUserEmail").textContent = `👤 ${authState.email}`;
-      syncFromStudioPanel(false, false);
+
       scrollPageToTop();
     } else {
       loginOverlay.hidden = false;
@@ -1448,45 +1419,17 @@
   const quickSaveBtn = document.getElementById("btnQuickSave");
   const titles = { collect: "상품 수집", studio: "상품 제작", stock: "재고 관리" };
 
-  function updateCollectView() {
-    const d = bridgeMakerData || {};
-    const colors = Array.isArray(d.colors) ? d.colors.length : 0;
-    const images = Array.isArray(d.items) ? d.items.length : 0;
-    const options = Array.isArray(d.options) ? d.options.length : 0;
-    const warnings = (Array.isArray(d.options) ? d.options.filter(o => o.requiresReview || o.stockStatus === "unknown").length : 0) + (d.priceRequiresReview ? 1 : 0);
-    document.getElementById("cpCollectColors").textContent = colors;
-    document.getElementById("cpCollectImages").textContent = images;
-    document.getElementById("cpCollectOptions").textContent = options;
-    document.getElementById("cpCollectWarnings").textContent = warnings;
-    document.getElementById("cpCollectedUrl").value = d.url || "";
-    document.getElementById("cpCollectedName").textContent = d.lfName || d.title || "아직 수집된 상품이 없습니다";
-    const colorText = Array.isArray(d.colors) && d.colors.length ? d.colors.join(", ") : "색상 없음";
-    document.getElementById("cpCollectedMeta").textContent = d.lfName || d.title ? `색상 ${colorText} · 이미지 ${images}장 · 옵션 ${options}개 · 확인 필요 ${warnings}건` : "LF몰에서 상품을 수집하면 색상, 옵션과 이미지 현황이 표시됩니다.";
-  }
-
-  function switchView(viewName) {
-    menuButtons.forEach(btn => btn.classList.toggle("active", btn.dataset.view === viewName));
-    titleEl.textContent = titles[viewName] || "";
-    const isCollect = viewName === "collect";
-    const isStudio = viewName === "studio";
-    const isStock = viewName === "stock";
-    collectView.hidden = !isCollect;
-    if (studioMain) studioMain.style.display = isStudio ? "" : "none";
-    studioRegSection.style.display = isStudio ? "" : "none";
-    listView.hidden = !isStock;
-    if (quickSaveBtn) quickSaveBtn.style.display = isStudio ? "" : "none";
-    if (isCollect) { updateCollectView(); scrollPageToTop(); }
-    if (isStudio) { syncFromStudioPanel(false, false); cleanUnwantedUI(); scrollPageToTop(); }
-    if (isStock) { fetchProducts(); scrollPageToTop(); }
-  }
-
-  menuButtons.forEach(btn => btn.addEventListener("click", () => switchView(btn.dataset.view)));
-  document.getElementById("btnCollectSync").addEventListener("click", () => {
-    window.postMessage({ type: "REQUEST_LF_MAKER_DATA" }, "*");
-    setTimeout(() => { syncFromStudioPanel(false, true); updateCollectView(); }, 250);
-  });
-  document.getElementById("btnGoStudio").addEventListener("click", () => switchView("studio"));
-  switchView("collect");
+  const el=id=>document.getElementById(id);
+  const node=(tag,text,cls)=>{const e=document.createElement(tag);if(text!=null)e.textContent=text;if(cls)e.className=cls;return e};
+  function safeLink(value){try{const u=new URL(value);return u.protocol==='https:'?u.href:''}catch{return ''}}
+  function money(n){return Number(n)>0?formatWon(n):'미확인'}
+  function updateCollectView(){const grid=el('cpCollectedGrid');grid.replaceChildren();const q=el('cpCollectSearch').value.trim().toLowerCase();const list=archive.filter(d=>[d.lfName,d.code,...d.colors].join(' ').toLowerCase().includes(q));el('cpCollectTotal').textContent=list.length+' / '+archive.length+'개';el('lfConnection').textContent=connected?'현재 Chrome 프로필의 수집 자료':'수집 확장 프로그램 연결 대기 중. 확장 프로그램과 사이트 파일을 함께 업데이트했는지 확인하세요.';
+    for(const d of list){const a=node('article',null,'cp-product-card'), info=node('div',null,'cp-product-info');const images=d.items||[];const main=node('div',null,'cp-product-main');const im=node('img');im.loading='lazy';im.alt=d.lfName;const front=images.find(x=>x.role==='앞면')||images[0];if(safeLink(front?.url))im.src=front.url;main.append(im);const thumbs=node('div',null,'cp-thumb-row');for(const p of images.slice(0,5)){const i=node('img');i.loading='lazy';i.alt=p.role;i.src=safeLink(p.url);thumbs.append(i)}info.append(node('b',d.lfName||'상품명 미확인'),node('span',[d.code,...d.colors].join(' · ')),node('p','최대혜택가 '+money(d.discountPrice)+' / 정가 '+money(d.regularPrice)+(d.priceRequiresReview?' · 확인 필요':'')),node('p','원본 '+images.length+'장 · '+(d.savedAt?formatDate(d.savedAt):'이전 자료')),node('p',(d.options||[]).map(o=>(o.size||'사이즈 미확인')+' : '+(o.stockStatus==='unknown'?'수량 미확인':(o.sourceStock??o.stock)+'개')).join(' / ')||'재고 미확인'));
+    const link=node('a','LF몰 원본 보기');link.href=safeLink(d.url);link.target='_blank';link.rel='noopener noreferrer';info.append(link);const btn=node('button','이 상품 제작','cp-send-studio');btn.onclick=()=>{if(bridgeMakerData?.id===d.id)return switchView('studio');const u=new URL(location.href);u.searchParams.set('make',d.id);location.assign(u.href)};a.append(main,thumbs,info,btn);grid.append(a)}if(!list.length)grid.append(node('div',connected?(q?'검색 결과가 없습니다.':'아직 보관된 상품이 없습니다.'):'보관함 연결 중','cp-empty-card'))}
+  function switchView(name){if(name==='studio'&&!bridgeMakerData){name='collect';el('lfConnection').textContent='먼저 보관함에서 제작할 상품을 선택하세요.'}layout.dataset.view=name;const inMaker=name==='studio';menuButtons.forEach(b=>{b.classList.toggle('active',b.dataset.view===name);b.setAttribute('aria-current',b.dataset.view===name?'page':'false')});titleEl.textContent=titles[name];collectView.hidden=name!=='collect';studioRegSection.hidden=!inMaker;if(studioMain)studioMain.hidden=!inMaker;listView.hidden=name!=='stock';quickSaveBtn.hidden=!inMaker;quickSaveBtn.style.display=inMaker?'':'none';const step=['collect','studio','stock'].indexOf(name)+1;el('cpStepText').textContent='현재 '+step+' / 3 단계';el('cpStepBar').style.width=step*100/3+'%';if(name==='stock')fetchProducts();scrollPageToTop()}
+  const poll=()=>window.postMessage({type:'LF29_POLL'},location.origin);
+  window.addEventListener('message',async e=>{if(e.source!==window||e.origin!==location.origin)return;const msg=e.data;if(msg?.type==='LF29_ERROR'){el('lfConnection').textContent=msg.message;return}if(msg?.type!=='LF29_LIST'||!Array.isArray(msg.records))return;connected=true;archive=msg.records.filter(d=>d?.id&&Array.isArray(d.items)&&Array.isArray(d.colors));updateCollectView();if(!pendingId||mounting)return;const selected=archive.find(d=>d.id===pendingId);if(!selected){el('lfConnection').textContent='선택한 상품을 찾지 못했습니다.';return}pendingId=null;mounting=true;bridgeMakerData=selected;try{switchView('studio');setNativeInputValue(document.getElementById('code'),selected.code);setNativeInputValue(document.getElementById('brand'),(selected.lfName.match(/헤지스|닥스|질스튜어트|마에스트로|알레그리/i)||[])[0]);setNativeInputValue(document.querySelector('input[placeholder="긴팔 카라 니트"]'),selected.lfName);await syncFromStudioPanel(false,true);if(typeof window.LF29Mount!=='function')throw Error('사이트 bridge.js를 함께 교체하세요.');await window.LF29Mount(selected)}catch(err){alert('선택 상품 불러오기: '+err.message)}finally{mounting=false}});
+  menuButtons.forEach(b=>b.onclick=()=>switchView(b.dataset.view));sidebar.querySelectorAll('.cp-side-link').forEach(b=>b.onclick=()=>switchView(b.dataset.go));el('btnCollectSync').onclick=poll;el('cpCollectSearch').oninput=updateCollectView;switchView('collect');updateCollectView();poll();
 
   function updateMonthOptions() {
     const select = document.getElementById("mMonthFilter");
@@ -1512,14 +1455,15 @@
     const monthFilter = document.getElementById("mMonthFilter").value;
     return products.filter(p => {
       const optCodes = (p.options || []).map(o => o.code).join(" ").toLowerCase();
-      const matchText =
+      const matchText = p.options.some(o=>[o.color,o.size].join(" ").toLowerCase().includes(kw)) ||
         p.name.toLowerCase().includes(kw) ||
         p.lfName.toLowerCase().includes(kw) ||
         p.code.toLowerCase().includes(kw) ||
         optCodes.includes(kw) ||
         p.tags.toLowerCase().includes(kw) ||
         p.copy.toLowerCase().includes(kw);
-      const matchStatus = filter === "ALL" || p.status === filter;
+      if(p.status!=='업로드 완료')return false;
+      const opts=p.options||[];const matchStatus=filter==='ALL'||(filter==='zero'?opts.some(o=>o.stock===0):opts.some(o=>!o.stockStatus||o.stockStatus==='unknown'));
       const matchMonth = monthFilter === "ALL" || (p.uploadDate || "").startsWith(monthFilter);
       return matchText && matchStatus && matchMonth;
     });
@@ -1529,10 +1473,7 @@
     const tbody = document.getElementById("mTableBody");
     tbody.innerHTML = `<tr><td colspan="10" style="text-align:center;padding:30px;">데이터 불러오는 중...</td></tr>`;
     try {
-      const res = await authFetch(`${BASE_URL}?key=${API_KEY}`);
-      const json = await res.json();
-      if (!res.ok) throw new Error(json.error?.message || "불러오기 실패");
-      const docs = json.documents || [];
+      const docs=[];let token='';do{const u=new URL(BASE_URL);u.searchParams.set('key',API_KEY);u.searchParams.set('pageSize','100');if(token)u.searchParams.set('pageToken',token);const res=await authFetch(u.href);const json=await res.json();if(!res.ok)throw Error(json.error?.message||'조회 실패');docs.push(...(json.documents||[]));token=json.nextPageToken||''}while(token);
       products = docs.map(doc => {
         const f = doc.fields || {};
         const createdAt = Number(f.createdAt?.integerValue || f.createdAt?.doubleValue || 0);
@@ -1568,7 +1509,7 @@
       updateMonthOptions();
       renderList();
     } catch (err) {
-      tbody.innerHTML = `<tr><td colspan="10" style="text-align:center;color:#dc2626;padding:30px;">오류: ${err.message}</td></tr>`;
+      tbody.replaceChildren();const errRow=tbody.insertRow();const errCell=errRow.insertCell();errCell.colSpan=10;errCell.textContent='조회 실패: '+err.message;
     }
   }
 
@@ -1602,12 +1543,13 @@
         createdAt: { integerValue: String(Date.now()) }
       }
     };
-    const res = await authFetch(`${BASE_URL}?key=${API_KEY}`, {
+    const digest=Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(bridgeMakerData.id))),v=>v.toString(16).padStart(2,'0')).join('');
+    const res = await authFetch(BASE_URL+'?key='+API_KEY+'&documentId=lf29_'+digest, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload)
     });
-    if (!res.ok) throw new Error("저장 실패");
+    if (!res.ok) throw Error(res.status===409?'이미 등록된 상품입니다. 재고 관리에서 수정하세요.':(await res.json()).error?.message||'저장 실패');
   }
 
   async function updateProductInFirebase(id, item) {
@@ -1836,6 +1778,7 @@
   });
 
   async function saveFromStudioCombined() {
+    if(!bridgeMakerData||mounting)return alert('선택한 상품을 모두 불러온 후 등록하세요.');if(!confirm('이 상품을 등록 상품으로 재고 관리에 추가할까요? 쿠팡으로 전송되지 않습니다.'))return;
     const ext = await readStudioAndExtensionData();
     const panelName = document.getElementById("sName").value.trim();
     const fullName = panelName || ext.defaultName;
@@ -1879,15 +1822,15 @@
         notice: finalNotice,
         tags: rawTagsVal,
         sourceUrl: document.getElementById("sSourceUrl").value.trim() || ext.sourceUrl,
-        thumbUrl: thumbVal,
-        detailImgUrl: detailVal,
+        thumbUrl: safeLink(thumbVal)||safeLink(bridgeMakerData.thumbUrl)||safeLink(bridgeMakerData.items[0]?.url),
+        detailImgUrl: safeLink(detailVal),
         discountPrice: costVal,
         price: saleVal,
         regularPrice: parseNum(document.getElementById("sRegularPrice").value) || ext.regularPrice,
-        status: document.getElementById("sStatus").value || "상세페이지 제작중",
+        status: "업로드 완료",
         copy: finalCopy
       });
-      alert(`✅ [${fullName}] 상품(썸네일·상세페이지·SEO태그 포함)이 저장되었습니다!`);
+      alert(`✅ [${fullName}] 상품을 재고 관리에 등록했습니다.`);
       if (!listView.hidden) fetchProducts();
     } catch (e) {
       alert("저장 중 오류: " + e.message);
@@ -1914,58 +1857,9 @@
       return;
     }
 
-    filtered.forEach((p, idx) => {
-      const tr = document.createElement("tr");
-      const { profitAfterVat, rateAfterVat } = calcMargin(p.discountPrice, p.price);
-      const marginBadge = p.price > 0
-        ? `<div class="cp-margin-badge ${profitAfterVat >= 0 ? "pos" : "neg"}">세후 ${rateAfterVat.toFixed(1)}% (${formatWon(profitAfterVat)})</div>`
-        : "";
-      const workerInfo = [
-        p.author ? `등록: ${p.author}` : "",
-        p.updatedBy ? `수정: ${p.updatedBy}` : ""
-      ].filter(Boolean).join(" · ");
-
-      const uniqueCodes = [...new Set((p.options || []).map(o => o.code).filter(Boolean))];
-      const displayCode = uniqueCodes.length ? uniqueCodes.join(", ") : (p.code || "-");
-
-      tr.innerHTML = `
-        <td class="cp-num-col">${idx + 1}</td>
-        <td style="white-space:nowrap;color:#475569;">${p.uploadDate}</td>
-        <td>
-          <div style="font-weight:700;word-break:break-word;color:#0f172a;">${p.name}</div>
-          ${p.lfName ? `<div class="cp-lf-sub">LF: ${p.lfName}</div>` : ""}
-          ${workerInfo ? `<div class="cp-worker-tag">${workerInfo}</div>` : ""}
-        </td>
-        <td>
-          ${p.sourceUrl ? `<a href="${p.sourceUrl}" target="_blank" class="cp-link-btn">링크 ↗</a>` : `<span style="color:#94a3b8;">-</span>`}
-        </td>
-        <td style="font-family:monospace;font-size:12px;color:#334155;word-break:break-all;">${displayCode}</td>
-        <td class="cp-price-col">${formatWon(p.discountPrice)}</td>
-        <td class="cp-price-col">
-          <div style="font-weight:700;color:#003cb3;">${formatWon(p.price)}</div>
-          ${marginBadge}
-        </td>
-        <td class="cp-price-col" style="color:#64748b;">${formatWon(p.regularPrice)}</td>
-        <td>
-          <select class="cp-row-status">
-            <option value="수집완료" ${p.status === "수집완료" ? "selected" : ""}>수집완료</option>
-            <option value="상세페이지 제작중" ${p.status === "상세페이지 제작중" ? "selected" : ""}>상세페이지 제작중</option>
-            <option value="업로드 완료" ${p.status === "업로드 완료" ? "selected" : ""}>업로드 완료</option>
-          </select>
-        </td>
-        <td>
-          <div class="cp-action-wrap">
-            <button type="button" class="cp-edit-btn">수정</button>
-            <button type="button" class="cp-del-btn">삭제</button>
-          </div>
-        </td>
-      `;
-      tr.querySelector(".cp-row-status").addEventListener("change", e => updateStatusOnly(p.id, e.target.value));
-      tr.querySelector(".cp-edit-btn").addEventListener("click", () => openEditModal(p));
-      tr.querySelector(".cp-del-btn").addEventListener("click", () => deleteProduct(p.id));
-      tbody.appendChild(tr);
-    });
+    filtered.forEach(p=>{const tr=node('tr');const td=(s,cls)=>{const cell=node('td',s,cls);tr.append(cell);return cell};const image=td();if(safeLink(p.thumbUrl)||/^data:image\/(jpeg|png|webp);base64,/i.test(p.thumbUrl)){const i=node('img');i.width=48;i.height=48;i.loading='lazy';i.style.objectFit='contain';i.alt='';i.src=p.thumbUrl;image.append(i)}td(p.uploadDate);td([p.brand,p.name,p.code].filter(Boolean).join('\n'),'lf29-stock');const link=td();if(safeLink(p.sourceUrl)){const a=node('a','원본 보기');a.href=p.sourceUrl;a.rel='noopener';a.target='_blank';link.append(a)}td(p.options.map(o=>[o.color,o.size].join(' / ')).join('\n')||'미확인','lf29-stock');td(p.options.map(o=>o.stock+'개'+(!o.stockStatus||o.stockStatus==='unknown'?' · 확인 필요':'')).join('\n')||'미확인','lf29-stock');td(money(p.discountPrice));td(money(p.regularPrice));td(money(p.price));const actions=td();const b=node('button','수정','cp-edit-btn');b.onclick=()=>openEditModal(p);const x=node('button','삭제','cp-del-btn');x.onclick=()=>deleteProduct(p.id);actions.append(b,x);tbody.append(tr)});
   }
 
+  document.getElementById('sStatus').closest('label').hidden=true;document.getElementById('sStatus').closest('label').style.display='none';
   updateAuthUI();
 })();
