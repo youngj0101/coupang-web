@@ -2,15 +2,13 @@
   if (window.__CP_MANAGER_LOADED__) return;
   window.__CP_MANAGER_LOADED__ = true;
 
-  // =========================================================================
-  // 1) 설정 및 상수 (CONFIG & CONSTANTS)
-  // =========================================================================
   const PROJECT_ID = "coupang-auto-9f7f0";
   const API_KEY = "AIzaSyDaySX9tYRXdftu7TGEdb5kG-nv44OqS90";
   const BASE_URL = `https://firestore.googleapis.com/v1/projects/${PROJECT_ID}/databases/(default)/documents/products`;
   const AUTH_URL = `https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=${API_KEY}`;
   const REFRESH_URL = `https://securetoken.googleapis.com/v1/token?key=${API_KEY}`;
   const AUTH_STORAGE_KEY = "cp_team_auth_v1";
+  const COLLECT_ARCHIVE_KEY = "cp_collected_archive_v1";
 
   const DEFAULT_FEE_RATE = 11.55;
   const DEFAULT_SHIPPING = 0;
@@ -62,14 +60,14 @@
     ["asInfo", "A/S 책임자와 전화번호"]
   ];
 
-  // 요청 반영: 이미지 검수·가격·마진·쿠팡 등록 제거, 상품 정보 -> 상품 제작 변경
   const WORKFLOW_STEPS = [
-    { step: 1, title: "상품 수집", sub: "상품명·가격·색상·품번·사이즈·재고·링크·이미지", status: "완료" },
+    { step: 1, title: "상품 수집", sub: "LF몰 수집 데이터 보관함", status: "완료" },
     { step: 2, title: "상품 제작", sub: "옵션·사이즈표·상세페이지 제작", status: "진행 중" },
-    { step: 3, title: "재고 관리", sub: "재고 수량 및 상태 관리", status: "대기" }
+    { step: 3, title: "재고 관리", sub: "상품 리스트 재고·상태 관리", status: "대기" }
   ];
 
   let products = [];
+  let collectedArchive = loadCollectedArchive();
   let editingId = null;
   let authState = loadAuth();
   let bridgeMakerData = null;
@@ -82,9 +80,60 @@
   let inspectIndex = 0;
   let selectedInspectColor = "";
 
-  // =========================================================================
-  // 2) 유틸리티 & 계산 헬퍼 (UTILS & CALCULATORS)
-  // =========================================================================
+  function loadCollectedArchive() {
+    try { return JSON.parse(localStorage.getItem(COLLECT_ARCHIVE_KEY)) || []; }
+    catch { return []; }
+  }
+
+  function saveCollectedArchive(list) {
+    collectedArchive = Array.isArray(list) ? list : [];
+    try { localStorage.setItem(COLLECT_ARCHIVE_KEY, JSON.stringify(collectedArchive)); } catch {}
+  }
+
+  function upsertCollectedSnapshot(raw) {
+    if (!raw || (!raw.lfName && !raw.title && !raw.code && !(raw.items?.length))) return;
+    const cleanName = sanitizeProductTitle(raw.lfName || raw.title || raw.code || "수집 상품");
+    const snap = {
+      id: `${raw.code || "PRD"}_${cleanName}`,
+      stage: "1. 상품 수집",
+      url: raw.url || "",
+      code: raw.code || "",
+      lfName: cleanName,
+      title: cleanName,
+      colors: Array.isArray(raw.colors) ? raw.colors : [],
+      seoTags: Array.isArray(raw.seoTags) ? raw.seoTags : [],
+      thumbUrl: raw.thumbUrl || raw.items?.[0]?.url || "",
+      regularPrice: Number(raw.regularPrice) >= 10000 ? Number(raw.regularPrice) : 0,
+      discountPrice: Number(raw.discountPrice) >= 10000 ? Number(raw.discountPrice) : 0,
+      items: Array.isArray(raw.items) ? raw.items : [],
+      options: Array.isArray(raw.options) ? raw.options : [],
+      measuredSizes: raw.measuredSizes || null,
+      notice: raw.notice || {},
+      savedAt: raw.savedAt || Date.now()
+    };
+    const next = [snap, ...collectedArchive.filter(x => x.id !== snap.id)].slice(0, 100);
+    saveCollectedArchive(next);
+  }
+
+  try {
+    const cached = localStorage.getItem("lfMakerDataBridge");
+    if (cached) {
+      bridgeMakerData = JSON.parse(cached);
+      upsertCollectedSnapshot(bridgeMakerData);
+    }
+  } catch {}
+
+  window.addEventListener("message", e => {
+    if (e.data?.type === "LF_MAKER_DATA_SYNC" && e.data.data) {
+      bridgeMakerData = e.data.data;
+      upsertCollectedSnapshot(bridgeMakerData);
+      inspectIndex = 0;
+      selectedInspectColor = "";
+      try { localStorage.setItem("lfMakerDataBridge", JSON.stringify(bridgeMakerData)); } catch {}
+      syncFromStudioPanel(false, true);
+    }
+  });
+
   function loadAuth() {
     try { return JSON.parse(localStorage.getItem(AUTH_STORAGE_KEY)) || null; }
     catch { return null; }
@@ -108,7 +157,7 @@
 
   function parseNum(val) {
     const n = Number(String(val ?? "").replace(/[^0-9-]/g, "")) || 0;
-    return n >= 10000 ? n : (n > 0 && n < 10000 ? 0 : 0);
+    return n >= 10000 ? n : 0;
   }
 
   function clampStock(val) {
@@ -242,9 +291,6 @@
     document.body.scrollTop = 0;
   }
 
-  // =========================================================================
-  // 3) 제작실 DOM 자동 주입 (STUDIO DOM AUTOMATION)
-  // =========================================================================
   function cleanUnwantedUI() {
     if (/다중\s*색상\s*상품\s*제작실/.test(document.title)) {
       document.title = document.title.replace(/다중\s*색상\s*상품\s*제작실/g, "쿠팡 자동화");
@@ -262,11 +308,11 @@
   function getSizeRowsAndAddBtn() {
     const addBtn = [...document.querySelectorAll("button")].find(b =>
       !b.id?.startsWith("cp") &&
-      !b.closest("#cpStudioRegSection, #cpEditModal, #cpListView, #cpInspectWorkbench") &&
+      !b.closest("#cpStudioRegSection, #cpEditModal, #cpListView, #cpCollectView, #cpInspectWorkbench") &&
       /사이즈\s*한\s*줄\s*추가/.test((b.innerText || b.textContent || "").replace(/\s+/g, " ").trim())
     );
     const sizeInputs = [...document.querySelectorAll('input[aria-label="사이즈"]')].filter(
-      inp => !inp.closest("#cpStudioRegSection, #cpEditModal, #cpListView, #cpInspectWorkbench")
+      inp => !inp.closest("#cpStudioRegSection, #cpEditModal, #cpListView, #cpCollectView, #cpInspectWorkbench")
     );
     const rows = sizeInputs.map(szInp => {
       const tr = szInp.closest("tr");
@@ -317,7 +363,7 @@
 
     const labels = [...document.querySelectorAll("label, span, div, p, b, strong")].filter(el =>
       !el.id?.startsWith("cp") &&
-      !el.closest("#cpStudioRegSection, #cpEditModal, #cpListView, #cpInspectWorkbench") &&
+      !el.closest("#cpStudioRegSection, #cpEditModal, #cpListView, #cpCollectView, #cpInspectWorkbench") &&
       el.children.length <= 2 &&
       /확인한\s*소재\s*및\s*혼용률/.test((el.innerText || el.textContent || "").replace(/\s+/g, " ").trim())
     );
@@ -383,7 +429,7 @@
 
   function findOptionCards() {
     const colorInputs = [...document.querySelectorAll('input[type="text"], input:not([type])')].filter(inp => {
-      if (inp.closest("#cpStudioRegSection, #cpEditModal, #cpListView, #cpInspectWorkbench")) return false;
+      if (inp.closest("#cpStudioRegSection, #cpEditModal, #cpListView, #cpCollectView, #cpInspectWorkbench")) return false;
       const ph = inp.placeholder || "";
       const nearText = ((inp.closest("div")?.parentElement?.innerText) || "").replace(/\s+/g, " ");
       return /블랙/.test(ph) || /색상명\s*\(필수\)/.test(nearText);
@@ -415,13 +461,16 @@
     }
   }
 
+  // '#lfReceived' 영역의 이미지를 세로가 아닌 가로 그리드로 렌더링
   function renderLfReceivedPreview(makerData) {
     const lfRec = document.getElementById("lfReceived");
     if (!lfRec || !Array.isArray(makerData?.items)) return;
     const list = makerData.items.filter(x => (x?.dataUrl || x?.url) && x.role !== "제외");
     if (!list.length) return;
-    lfRec.innerHTML = `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:10px;margin-top:10px;">${
-      list.map(x => `<div style="border:1px solid #cbd5e1;border-radius:8px;padding:6px;background:#fff;text-align:center;"><img src="${x.dataUrl || x.url}" style="width:100%;height:96px;object-fit:cover;border-radius:4px;"><div style="font-size:11.5px;font-weight:700;margin-top:4px;">${x.color || ""} · ${x.role || ""}</div></div>`).join("")
+    lfRec.style.setProperty("display", "block", "important");
+    lfRec.style.setProperty("width", "100%", "important");
+    lfRec.innerHTML = `<div class="cp-lf-rec-row">${
+      list.map(x => `<div class="cp-lf-rec-card"><img src="${x.dataUrl || x.url}" alt="수집사진"><div class="cp-lf-rec-cap">${x.color || ""} · ${x.role || ""}</div></div>`).join("")
     }</div>`;
   }
 
@@ -515,7 +564,7 @@
     let detailImgUrl = latestDetailDataUrl || "";
 
     const canvases = [...document.querySelectorAll("canvas")].filter(c => {
-      if (c.closest("#cpStudioRegSection, #cpEditModal, #cpListView, #cpInspectWorkbench")) return false;
+      if (c.closest("#cpStudioRegSection, #cpEditModal, #cpListView, #cpCollectView, #cpInspectWorkbench")) return false;
       return c.width > 80 && c.height > 80;
     });
 
@@ -542,7 +591,7 @@
   async function triggerMakeAllAndCaptureAssets() {
     const nativeMakeBtn = [...document.querySelectorAll("button")].find(b =>
       !b.id?.startsWith("cp") &&
-      !b.closest("#cpStudioRegSection, #cpEditModal, #cpListView, #cpInspectWorkbench") &&
+      !b.closest("#cpStudioRegSection, #cpEditModal, #cpListView, #cpCollectView, #cpInspectWorkbench") &&
       /모든\s*색상\s*결과\s*만들기/.test((b.innerText || b.textContent || "").replace(/\s+/g, " ").trim())
     );
     if (nativeMakeBtn) {
@@ -555,9 +604,6 @@
     return assets;
   }
 
-  // =========================================================================
-  // 4) 스타일 & 레이아웃 구성 (UI & WORKSPACE)
-  // =========================================================================
   const style = document.createElement("style");
   style.textContent = `
     body { margin: 0 !important; background: #f3f6f4 !important; color: #111827 !important; }
@@ -585,13 +631,43 @@
       padding: 7px 12px !important; border-radius: 7px !important; font-weight: 600 !important;
       cursor: pointer; font-size: 12px !important; margin: 0 !important;
     }
-    .cp-sub-btn:hover { background: #334155 !important; }
     .cp-excel-btn {
       background: #15803d !important; color: #fff !important; border: none !important;
       padding: 9px 15px !important; border-radius: 8px !important; font-weight: 700 !important;
       cursor: pointer; font-size: 13px !important; margin: 0 !important;
     }
-    .cp-excel-btn:hover { background: #166534 !important; }
+
+    /* LF몰에서 받은 이미지 가로 배열 스타일 */
+    .cp-lf-rec-row {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(126px, 1fr));
+      gap: 10px;
+      margin-top: 10px;
+      width: 100%;
+    }
+    .cp-lf-rec-card {
+      border: 1px solid #cbd5e1;
+      border-radius: 8px;
+      padding: 6px;
+      background: #ffffff;
+      text-align: center;
+    }
+    .cp-lf-rec-card img {
+      display: block !important;
+      width: 100% !important;
+      height: 92px !important;
+      object-fit: cover;
+      border-radius: 5px;
+    }
+    .cp-lf-rec-cap {
+      font-size: 11px;
+      font-weight: 700;
+      color: #334155;
+      margin-top: 5px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
 
     #cpLayout { display: flex; min-height: 100vh; padding-top: 56px; }
     #cpSidebar {
@@ -652,18 +728,14 @@
       border-radius: 7px !important; font-size: 12px !important; font-weight: 600 !important;
       cursor: pointer;
     }
-    .cp-side-btn:hover { background: #e2e8f0 !important; }
 
     #cpContent {
       flex: 1; margin-left: 252px; min-width: 0; padding: 24px 26px 48px;
       display: flex; flex-direction: column; align-items: center;
     }
-    #cpInspectWorkbench { width: 100%; max-width: 1240px; margin: 0 auto 22px; }
+    #cpInspectWorkbench, #cpCollectView { width: 100%; max-width: 1240px; margin: 0 auto 22px; }
     .cp-wb-breadcrumb { font-size: 12.5px; color: #64748b; margin-bottom: 12px; font-weight: 600; }
-    .cp-wb-header-bar {
-      display: flex; justify-content: space-between; align-items: center;
-      gap: 12px; flex-wrap: wrap; margin-bottom: 16px;
-    }
+    .cp-wb-header-bar { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 16px; }
     .cp-wb-h1 { margin: 0; font-size: 24px; font-weight: 800; color: #0f172a; }
     .cp-wb-sub { margin: 4px 0 0; font-size: 13.5px; color: #64748b; }
     .cp-pager-group { display: inline-flex; align-items: center; gap: 6px; }
@@ -675,6 +747,34 @@
     .cp-pager-counter {
       background: #ffffff; border: 1px solid #e2e8f0; border-radius: 8px;
       padding: 7px 12px; font-size: 12.5px; font-weight: 700; color: #1e293b;
+    }
+
+    .cp-collect-grid {
+      display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 14px;
+    }
+    .cp-collect-card {
+      background: #ffffff; border: 1px solid #e2e8f0; border-radius: 12px;
+      padding: 14px; display: flex; flex-direction: column; gap: 10px;
+    }
+    .cp-collect-top { display: flex; gap: 12px; align-items: center; }
+    .cp-collect-thumb {
+      width: 64px; height: 80px; object-fit: cover; border-radius: 8px;
+      border: 1px solid #e2e8f0; flex-shrink: 0; background: #f8fafc;
+    }
+    .cp-collect-meta { flex: 1; min-width: 0; }
+    .cp-collect-name { font-size: 13.5px; font-weight: 800; color: #0f172a; line-height: 1.35; word-break: break-word; }
+    .cp-collect-sub { font-size: 11.5px; color: #64748b; margin-top: 3px; }
+    .cp-collect-price { font-size: 13px; font-weight: 700; color: #0f3d2e; margin-top: 4px; }
+    .cp-collect-photos-strip { display: flex; gap: 5px; overflow-x: auto; padding-bottom: 2px; }
+    .cp-collect-photos-strip img {
+      width: 42px; height: 52px; object-fit: cover; border-radius: 5px;
+      border: 1px solid #cbd5e1; flex-shrink: 0;
+    }
+    .cp-collect-actions { display: flex; gap: 6px; justify-content: flex-end; margin-top: auto; }
+    .cp-load-btn {
+      background: #0f3d2e !important; color: #fff !important; border: none !important;
+      padding: 7px 12px !important; border-radius: 7px !important; font-size: 12px !important;
+      font-weight: 700 !important; cursor: pointer; margin: 0 !important;
     }
 
     .cp-detail-main-card {
@@ -880,7 +980,6 @@
     <div class="cp-step-list" id="cpStepList"></div>
 
     <div class="cp-menu-group">바로가기</div>
-    <button type="button" class="cp-menu-item active" data-view="studio">└ 상품 제작실</button>
     <button type="button" class="cp-menu-item" data-view="list">└ 상품 리스트</button>
 
     <div class="cp-sidebar-divider"></div>
@@ -893,6 +992,10 @@
 
   const content = document.createElement("div");
   content.id = "cpContent";
+
+  const collectView = document.createElement("section");
+  collectView.id = "cpCollectView";
+  collectView.hidden = true;
 
   const inspectWorkbench = document.createElement("section");
   inspectWorkbench.id = "cpInspectWorkbench";
@@ -1074,6 +1177,7 @@
     </div>
   `;
 
+  content.appendChild(collectView);
   content.appendChild(inspectWorkbench);
   content.appendChild(studioRegSection);
   if (studioMain) content.appendChild(studioMain);
@@ -1086,9 +1190,83 @@
   document.body.appendChild(editModal);
   document.body.appendChild(loginOverlay);
 
-  // =========================================================================
-  // 5) 워크스페이스 렌더링 & 상태 관리 (STATE & EVENTS)
-  // =========================================================================
+  function renderCollectArchiveView() {
+    if (currentView !== "collect") {
+      collectView.hidden = true;
+      return;
+    }
+    collectView.hidden = false;
+    document.getElementById("cpCurrentTitle").textContent = "1. 상품 수집";
+
+    collectView.innerHTML = `
+      <div class="cp-wb-breadcrumb">🏠 쿠팡 자동화 &gt; 1. 상품 수집 보관함</div>
+      <div class="cp-wb-header-bar">
+        <div>
+          <h1 class="cp-wb-h1">1. 상품 수집</h1>
+          <p class="cp-wb-sub">LF몰 확장 프로그램으로 수집한 상품이 계속 보관됩니다. (상품 리스트와 별도 보관)</p>
+        </div>
+        <button type="button" class="cp-sub-btn" id="btnClearCollectArchive">보관함 전체 비우기</button>
+      </div>
+      ${collectedArchive.length ? `
+        <div class="cp-collect-grid">
+          ${collectedArchive.map((item, idx) => {
+            const thumbs = (item.items || []).filter(i => i?.dataUrl || i?.url).slice(0, 5);
+            const mainThumb = thumbs[0]?.dataUrl || thumbs[0]?.url || item.thumbUrl || "";
+            const sizesTxt = [...new Set((item.options || []).map(o => o.size).filter(Boolean))].join(", ") || "-";
+            const colorsTxt = (item.colors || []).join(", ") || "-";
+            return `
+              <article class="cp-collect-card">
+                <div class="cp-collect-top">
+                  ${mainThumb ? `<img src="${mainThumb}" class="cp-collect-thumb" alt="수집 썸네일">` : `<div class="cp-collect-thumb"></div>`}
+                  <div class="cp-collect-meta">
+                    <div class="cp-collect-name">${item.title || item.lfName || "수집 상품"}</div>
+                    <div class="cp-collect-sub">품번: ${item.code || "-"} · 색상: ${colorsTxt}</div>
+                    <div class="cp-collect-sub">사이즈: ${sizesTxt} · 사진: ${(item.items || []).length}장</div>
+                    <div class="cp-collect-price">최대혜택가 ${formatWon(item.discountPrice)} / 정가 ${formatWon(item.regularPrice)}</div>
+                  </div>
+                </div>
+                ${thumbs.length ? `
+                  <div class="cp-collect-photos-strip">
+                    ${thumbs.map(t => `<img src="${t.dataUrl || t.url}" alt="사진">`).join("")}
+                  </div>
+                ` : ""}
+                <div class="cp-collect-actions">
+                  ${item.url ? `<a href="${item.url}" target="_blank" class="cp-link-btn">LF몰 링크 ↗</a>` : ""}
+                  <button type="button" class="cp-load-btn" data-idx="${idx}">2. 상품 제작으로 불러오기 →</button>
+                </div>
+              </article>
+            `;
+          }).join("")}
+        </div>
+      ` : `
+        <div class="cp-card" style="text-align:center;color:#64748b;padding:36px;">
+          아직 보관된 수집 상품이 없습니다. LF몰에서 확장 프로그램으로 <strong>이미지 수집</strong>을 진행해 주세요.
+        </div>
+      `}
+    `;
+
+    collectView.querySelectorAll(".cp-load-btn").forEach(btnEl => {
+      btnEl.addEventListener("click", async () => {
+        const picked = collectedArchive[Number(btnEl.dataset.idx)];
+        if (!picked) return;
+        bridgeMakerData = picked;
+        try { localStorage.setItem("lfMakerDataBridge", JSON.stringify(picked)); } catch {}
+        activeStep = 2;
+        currentView = "studio";
+        await syncFromStudioPanel(false, true);
+        renderStepSidebar();
+        applyViewVisibility();
+        scrollPageToTop();
+      });
+    });
+
+    document.getElementById("btnClearCollectArchive")?.addEventListener("click", () => {
+      if (!confirm("1. 상품 수집 보관함의 모든 항목을 삭제할까요?")) return;
+      saveCollectedArchive([]);
+      renderCollectArchiveView();
+    });
+  }
+
   function renderStepSidebar() {
     const pct = Math.round((activeStep / WORKFLOW_STEPS.length) * 100);
     document.getElementById("cpStepProgressText").textContent = `전체 진행률 ${activeStep} / ${WORKFLOW_STEPS.length}`;
@@ -1119,18 +1297,41 @@
         const st = Number(btn.dataset.step);
         activeStep = st;
         if (st === 1) {
-          switchView("studio");
-          syncFromStudioPanel(false, true);
+          currentView = "collect";
         } else if (st === 2) {
-          switchView("studio");
-          document.getElementById("cpStudioRegSection")?.scrollIntoView({ behavior: "smooth", block: "start" });
+          currentView = "studio";
         } else if (st === 3) {
-          switchView("list");
+          currentView = "list";
+          fetchProducts();
         }
         renderStepSidebar();
-        renderInspectWorkbench();
+        applyViewVisibility();
+        scrollPageToTop();
       });
     });
+  }
+
+  function applyViewVisibility() {
+    menuButtons.forEach(btn => btn.classList.toggle("active", btn.dataset.view === currentView));
+    const isCollect = currentView === "collect";
+    const isStudio = currentView === "studio";
+    const isList = currentView === "list";
+
+    collectView.hidden = !isCollect;
+    inspectWorkbench.hidden = !isStudio;
+    studioRegSection.style.setProperty("display", isStudio ? "block" : "none", "important");
+    if (studioMain) studioMain.style.setProperty("display", isStudio ? "block" : "none", "important");
+    listView.hidden = !isList;
+
+    if (isCollect) {
+      document.getElementById("cpCurrentTitle").textContent = "1. 상품 수집";
+      renderCollectArchiveView();
+    } else if (isStudio) {
+      document.getElementById("cpCurrentTitle").textContent = "2. 상품 제작";
+      renderInspectWorkbench();
+    } else {
+      document.getElementById("cpCurrentTitle").textContent = "3. 재고 관리 · 상품 리스트";
+    }
   }
 
   function getInspectionQueue() {
@@ -1145,7 +1346,6 @@
     const brand = document.getElementById("sBrand")?.value.trim() || d.brand || (baseTitle.split(" ")[0] || "브랜드");
     const cost = parseNum(document.getElementById("sDiscountPrice")?.value) || (Number(d.discountPrice) >= 10000 ? Number(d.discountPrice) : 0);
     const sale = parseNum(document.getElementById("sPrice")?.value) || (cost ? calcTargetSalePrice(cost) : 0);
-    const catPath = studioCatCtrl.getPath() || d.category || "";
 
     return (colors.length ? colors : ["기본"]).map((col, idx) => {
       const colPhotos = items.filter(it => (it.color || colors[0]) === col);
@@ -1160,8 +1360,7 @@
         photos: colPhotos.length ? colPhotos : items,
         options: colOpts.length ? colOpts : options,
         cost,
-        sale,
-        catPath
+        sale
       };
     });
   }
@@ -1181,10 +1380,6 @@
     const photoList = displayPhotos.length ? displayPhotos : cur.photos;
     const heroPhoto = photoList[0]?.dataUrl || photoList[0]?.url || document.getElementById("sThumbUrl")?.value || "";
 
-    const recs = recommendCategories(`${cur.title} ${cur.catPath} ${latestMaterialText}`);
-    const currentMain = document.getElementById("sCatMain")?.value || "";
-    const currentSub = document.getElementById("sCatSub")?.value || "";
-
     const optRowsHtml = (cur.options.length ? cur.options : [{ color: activeCol, code: "", size: "FREE", stock: MAX_STOCK }])
       .slice(0, 6)
       .map(o => `
@@ -1195,15 +1390,13 @@
         </tr>
       `).join("");
 
-    document.getElementById("cpCurrentTitle").textContent = "2. 상품 제작";
-
     inspectWorkbench.innerHTML = `
-      <div class="cp-wb-breadcrumb">🏠 쿠팡 자동화 > 2. 상품 제작</div>
+      <div class="cp-wb-breadcrumb">🏠 쿠팡 자동화 &gt; 2. 상품 제작</div>
 
       <div class="cp-wb-header-bar">
         <div>
           <h1 class="cp-wb-h1">2. 상품 제작</h1>
-          <p class="cp-wb-sub">1. 상품 수집 데이터를 바탕으로 색상·옵션·사이즈표·카테고리를 구성합니다.</p>
+          <p class="cp-wb-sub">수집된 상품의 색상·옵션·사진을 확인하고 제작 폼을 채웁니다.</p>
         </div>
         <div class="cp-pager-group">
           <button type="button" class="cp-pager-btn" id="btnPrevInspect">‹</button>
@@ -1257,37 +1450,20 @@
             </table>
           </div>
         </div>
-
-        <div class="cp-cat-rec-section">
-          <div class="cp-cat-rec-title">ㅣ카테고리 추천</div>
-          <div style="font-size:12.5px;color:#64748b;">수집된 상품명에 맞는 쿠팡 카테고리를 선택하세요.</div>
-          <div class="cp-cat-cards-grid">
-            ${recs.map(r => {
-              const isSel = (currentMain === r.main && currentSub === r.sub) || (!currentMain && r.score === 98);
-              return `
-                <button type="button" class="cp-cat-card ${isSel ? "selected" : ""}" data-main="${r.main}" data-sub="${r.sub}">
-                  ${isSel ? `<span class="cp-cat-check">✓</span>` : ""}
-                  <div class="cp-cat-score">☆추천 (적합도 ${r.score}%)</div>
-                  <div class="cp-cat-path">${r.label.replace(/ > /g, " > ")}</div>
-                </button>
-              `;
-            }).join("")}
-          </div>
-        </div>
       </div>
 
       <div class="cp-wb-footer-actions">
         <button type="button" class="cp-prev-step-btn" id="btnPrevStep">‹ 1. 상품 수집</button>
-        <button type="button" class="cp-next-step-btn" id="btnCompleteInspectNext">저장 후 3. 재고 관리로 이동 ></button>
+        <button type="button" class="cp-next-step-btn" id="btnCompleteInspectNext">저장 후 3. 재고 관리로 이동 &gt;</button>
       </div>
     `;
 
-    inspectWorkbench.querySelectorAll(".cp-strip-item").forEach(btn => {
-      btn.addEventListener("click", () => {
+    inspectWorkbench.querySelectorAll(".cp-strip-item").forEach(btnEl => {
+      btnEl.addEventListener("click", () => {
         inspectWorkbench.querySelectorAll(".cp-strip-item").forEach(b => b.classList.remove("active"));
-        btn.classList.add("active");
+        btnEl.classList.add("active");
         const hero = document.getElementById("cpHeroPreviewImg");
-        if (hero) hero.src = btn.dataset.src;
+        if (hero) hero.src = btnEl.dataset.src;
       });
     });
 
@@ -1295,19 +1471,6 @@
       chip.addEventListener("click", () => {
         selectedInspectColor = chip.dataset.col || "";
         renderInspectWorkbench();
-      });
-    });
-
-    inspectWorkbench.querySelectorAll(".cp-cat-card").forEach(card => {
-      card.addEventListener("click", () => {
-        const mVal = card.dataset.main || "";
-        const sVal = card.dataset.sub || "";
-        document.getElementById("sCatMain").value = mVal;
-        document.getElementById("sCatMain").dispatchEvent(new Event("change"));
-        setTimeout(() => {
-          document.getElementById("sCatSub").value = sVal;
-          renderInspectWorkbench();
-        }, 30);
       });
     });
 
@@ -1325,20 +1488,20 @@
 
     document.getElementById("btnPrevStep").addEventListener("click", () => {
       activeStep = 1;
+      currentView = "collect";
       renderStepSidebar();
-      syncFromStudioPanel(false, true);
+      applyViewVisibility();
+      scrollPageToTop();
     });
 
     document.getElementById("btnCompleteInspectNext").addEventListener("click", async () => {
-      if (!document.getElementById("sCatMain").value && recs[0]) {
-        document.getElementById("sCatMain").value = recs[0].main;
-        document.getElementById("sCatMain").dispatchEvent(new Event("change"));
-        document.getElementById("sCatSub").value = recs[0].sub;
-      }
       await saveFromStudioCombined();
       activeStep = 3;
+      currentView = "list";
       renderStepSidebar();
-      switchView("list");
+      applyViewVisibility();
+      fetchProducts();
+      scrollPageToTop();
     });
   }
 
@@ -1552,6 +1715,7 @@
     if (Array.isArray(d.items) && d.items.length) await applyCollectedPhotosToStudio(d);
 
     renderInspectWorkbench();
+    renderCollectArchiveView();
     if (showToast) alert("📥 1. 상품 수집 데이터를 반영했습니다!");
   }
 
@@ -1600,7 +1764,7 @@
       errEl.textContent = "";
       document.getElementById("cpLoginPw").value = "";
       updateAuthUI();
-      if (!listView.hidden) fetchProducts();
+      if (currentView === "list") fetchProducts();
     } catch {
       errEl.textContent = "로그인 실패: 이메일 또는 비밀번호를 확인하세요.";
     }
@@ -1667,32 +1831,16 @@
     }
   });
 
-  const menuButtons = sidebar.querySelectorAll(".cp-menu-item");
-  const titleEl = document.getElementById("cpCurrentTitle");
-
-  function switchView(viewName) {
-    currentView = viewName;
-    menuButtons.forEach(btn => btn.classList.toggle("active", btn.dataset.view === viewName));
-    const isStudio = viewName === "studio";
-    titleEl.textContent = isStudio ? "2. 상품 제작" : "3. 재고 관리 · 상품 리스트";
-    inspectWorkbench.hidden = !isStudio;
-    if (studioMain) studioMain.style.setProperty("display", isStudio ? "block" : "none", "important");
-    studioRegSection.style.setProperty("display", isStudio ? "block" : "none", "important");
-    listView.hidden = isStudio;
-    if (isStudio) {
-      syncFromStudioPanel(false, false);
-      cleanUnwantedUI();
-      renderInspectWorkbench();
-      scrollPageToTop();
-    } else {
-      activeStep = 3;
+  menuButtons.forEach(btnEl => {
+    btnEl.addEventListener("click", () => {
+      currentView = btnEl.dataset.view;
+      activeStep = currentView === "list" ? 3 : 2;
       renderStepSidebar();
-      fetchProducts();
+      applyViewVisibility();
+      if (currentView === "list") fetchProducts();
       scrollPageToTop();
-    }
-  }
-
-  menuButtons.forEach(btn => btn.addEventListener("click", () => switchView(btn.dataset.view)));
+    });
+  });
 
   function updateMonthOptions() {
     const select = document.getElementById("mMonthFilter");
@@ -1798,7 +1946,7 @@
         discountPrice: { integerValue: String(Math.round(item.discountPrice || 0)) },
         price: { integerValue: String(Math.round(item.price || 0)) },
         regularPrice: { integerValue: String(Math.round(item.regularPrice || 0)) },
-        status: { stringValue: item.status || "1. 상품 수집" },
+        status: { stringValue: item.status || "2. 상품 제작" },
         copy: { stringValue: item.copy || "" },
         author: { stringValue: user },
         updatedBy: { stringValue: user },
@@ -2097,10 +2245,10 @@
         discountPrice: costVal,
         price: saleVal,
         regularPrice: parseNum(document.getElementById("sRegularPrice").value) || ext.regularPrice,
-        status: document.getElementById("sStatus").value || "1. 상품 수집",
+        status: document.getElementById("sStatus").value || "2. 상품 제작",
         copy: document.getElementById("sCopy").value.trim() || ext.studioCopy
       });
-      alert(`✅ [${fullName}] 상품이 저장되었습니다!`);
+      alert(`✅ [${fullName}] 상품이 상품 리스트에 저장되었습니다!`);
       if (!listView.hidden) fetchProducts();
     } catch (e) {
       alert("저장 중 오류: " + e.message);
@@ -2186,7 +2334,24 @@
     });
   }
 
+  let observerTimer = null;
+  const studioObserver = new MutationObserver(() => {
+    clearTimeout(observerTimer);
+    observerTimer = setTimeout(() => {
+      cleanUnwantedUI();
+      if (currentView === "studio") {
+        if (latestMeasuredSizes?.rows?.length) applyMeasuredSizesToStudio(latestMeasuredSizes);
+        if (latestMaterialText) applyFabricMaterialToStudio(latestMaterialText);
+        findOptionCards().forEach(card => {
+          const cInp = card.querySelector('input[placeholder*="블랙"], input[type="text"]');
+          if (cInp?.value) applyNavyWhiteTextColor(card, cInp.value);
+        });
+      }
+    }, 150);
+  });
+  studioObserver.observe(document.documentElement, { childList: true, subtree: true });
+
   renderStepSidebar();
-  renderInspectWorkbench();
+  applyViewVisibility();
   updateAuthUI();
 })();
