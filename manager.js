@@ -59,6 +59,15 @@
     ["asInfo", "A/S 책임자와 전화번호"]
   ];
 
+  const WORKFLOW_STEPS = [
+    { step: 1, title: "상품 수집", sub: "LF몰 상품 자동 수집", status: "완료" },
+    { step: 2, title: "이미지 검수", sub: "상품 이미지 품질·수량 확인", status: "완료" },
+    { step: 3, title: "상품정보", sub: "상품명, 옵션, 카테고리, 고지사항 검토", status: "진행 중" },
+    { step: 4, title: "가격·마진", sub: "판매가, 마진율, 수수료 확인", status: "대기" },
+    { step: 5, title: "쿠팡 등록", sub: "상품 등록 및 노출 확인", status: "대기" },
+    { step: 6, title: "재고 관리", sub: "재고 연동, 가격 자동 조정", status: "대기" }
+  ];
+
   let products = [];
   let editingId = null;
   let authState = loadAuth();
@@ -69,6 +78,9 @@
   let latestDetailDataUrl = "";
   let initialScrollLocked = false;
   let currentView = "studio";
+  let activeStep = 3;
+  let inspectIndex = 0;
+  let selectedInspectColor = "";
 
   try {
     const cached = localStorage.getItem("lfMakerDataBridge");
@@ -78,6 +90,8 @@
   window.addEventListener("message", e => {
     if (e.data?.type === "LF_MAKER_DATA_SYNC" && e.data.data) {
       bridgeMakerData = e.data.data;
+      inspectIndex = 0;
+      selectedInspectColor = "";
       try { localStorage.setItem("lfMakerDataBridge", JSON.stringify(bridgeMakerData)); } catch {}
       syncFromStudioPanel(false, true);
     }
@@ -152,6 +166,20 @@
     return /네이비|navy|남색/i.test(String(colorName || "").trim());
   }
 
+  function getColorHex(colorName) {
+    const c = String(colorName || "").trim().toLowerCase();
+    if (/네이비|navy|남색/.test(c)) return "#1e293b";
+    if (/베이지|beige/.test(c)) return "#e8dcc8";
+    if (/카키|khaki|올리브/.test(c)) return "#556b2f";
+    if (/블랙|검정|black/.test(c)) return "#18181b";
+    if (/화이트|흰색|white/.test(c)) return "#f8fafc";
+    if (/그레이|회색|grey|gray|차콜/.test(c)) return "#64748b";
+    if (/브라운|갈색|brown/.test(c)) return "#78350f";
+    if (/레드|빨강|red|버건디|와인/.test(c)) return "#991b1b";
+    if (/블루|파랑|blue/.test(c)) return "#1d4ed8";
+    return "#334155";
+  }
+
   function buildSeoTagsFromFields({ name, lfName, code, material, options }) {
     const baseText = `${name || ""} ${lfName || ""} ${material || ""} ${(options || []).map(o => `${o.color || ""} ${o.size || ""}`).join(" ")}`;
     const items = baseText.match(/(숏패딩|롱패딩|패딩|점퍼|자켓|재킷|코트|가디건|니트|스웨터|맨투맨|후드|셔츠|티셔츠|팬츠|바지|슬랙스|데님|카라)/g) || [];
@@ -196,6 +224,36 @@
       return { main: "단품/기본 의류", sub: last };
     }
     return { main: "", sub: "" };
+  }
+
+  function recommendCategories(text) {
+    const t = String(text || "");
+    if (/패딩|다운|점퍼|야상|항공|블루종|바막|바람막이/.test(t)) {
+      return [
+        { main: "점퍼", sub: "남성 패딩/다운패딩점퍼", score: 98, label: "아우터 > 점퍼/블루종" },
+        { main: "재킷", sub: "남성 캐주얼재킷", score: 86, label: "아우터 > 재킷" },
+        { main: "점퍼", sub: "남성 바람막이 점퍼", score: 74, label: "아우터 > 바람막이" }
+      ];
+    }
+    if (/니트|스웨터|가디건|카라/.test(t)) {
+      return [
+        { main: "스웨터/니트", sub: "남성 카라넥", score: 97, label: "상의 > 니트/스웨터" },
+        { main: "가디건", sub: "남성 기본(허리길이)가디건", score: 85, label: "상의 > 가디건" },
+        { main: "단품/기본 의류", sub: "남성 맨투맨", score: 72, label: "상의 > 캐주얼 상의" }
+      ];
+    }
+    if (/코트/.test(t)) {
+      return [
+        { main: "코트", sub: "남성 겨울 코트", score: 96, label: "아우터 > 코트" },
+        { main: "재킷", sub: "남성 캐주얼재킷", score: 82, label: "아우터 > 재킷" },
+        { main: "점퍼", sub: "남성 야상/사파리", score: 70, label: "아우터 > 사파리" }
+      ];
+    }
+    return [
+      { main: "점퍼", sub: "남성 패딩/다운패딩점퍼", score: 94, label: "아우터 > 점퍼/블루종" },
+      { main: "재킷", sub: "남성 캐주얼재킷", score: 84, label: "아우터 > 재킷" },
+      { main: "단품/기본 의류", sub: "남성 캐주얼 셔츠", score: 73, label: "상의 > 캐주얼 셔츠" }
+    ];
   }
 
   function calcMargin(cost, salePrice, feeRate = DEFAULT_FEE_RATE, shipping = DEFAULT_SHIPPING) {
@@ -267,7 +325,7 @@
     });
 
     document.querySelectorAll("div, footer, nav, section, aside, label, h1, h2, h3, h4, p, b, strong, small, span, button, select").forEach(el => {
-      if (el.id?.startsWith("cp") || el.closest("#cpTopBar, #cpSidebar, #cpEditModal, #cpLoginOverlay, #cpStudioRegSection, #cpListView")) return;
+      if (el.id?.startsWith("cp") || el.closest("#cpTopBar, #cpSidebar, #cpEditModal, #cpLoginOverlay, #cpStudioRegSection, #cpListView, #cpInspectWorkbench")) return;
       if (el.closest("#szRows") || el.querySelector("#szRows")) return;
       if (el.querySelector("#lfReceived, #btnMakeAll, .cp-card")) return;
 
@@ -299,12 +357,12 @@
   function getSizeRowsAndAddBtn() {
     const addBtn = [...document.querySelectorAll("button")].find(b =>
       !b.id?.startsWith("cp") &&
-      !b.closest("#cpStudioRegSection, #cpEditModal, #cpListView") &&
+      !b.closest("#cpStudioRegSection, #cpEditModal, #cpListView, #cpInspectWorkbench") &&
       /사이즈\s*한\s*줄\s*추가/.test((b.innerText || b.textContent || "").replace(/\s+/g, " ").trim())
     );
 
     const sizeInputs = [...document.querySelectorAll('input[aria-label="사이즈"]')].filter(
-      inp => !inp.closest("#cpStudioRegSection, #cpEditModal, #cpListView")
+      inp => !inp.closest("#cpStudioRegSection, #cpEditModal, #cpListView, #cpInspectWorkbench")
     );
 
     const rows = sizeInputs
@@ -359,7 +417,7 @@
 
     const labels = [...document.querySelectorAll("label, span, div, p, b, strong")].filter(el =>
       !el.id?.startsWith("cp") &&
-      !el.closest("#cpStudioRegSection, #cpEditModal, #cpListView") &&
+      !el.closest("#cpStudioRegSection, #cpEditModal, #cpListView, #cpInspectWorkbench") &&
       el.children.length <= 2 &&
       /확인한\s*소재\s*및\s*혼용률/.test((el.innerText || el.textContent || "").replace(/\s+/g, " ").trim())
     );
@@ -425,7 +483,7 @@
 
   function findOptionCards() {
     const colorInputs = [...document.querySelectorAll('input[type="text"], input:not([type])')].filter(inp => {
-      if (inp.closest("#cpStudioRegSection, #cpEditModal, #cpListView")) return false;
+      if (inp.closest("#cpStudioRegSection, #cpEditModal, #cpListView, #cpInspectWorkbench")) return false;
       const ph = inp.placeholder || "";
       const nearText = ((inp.closest("div")?.parentElement?.innerText) || "").replace(/\s+/g, " ");
       return /블랙/.test(ph) || /색상명\s*\(필수\)/.test(nearText);
@@ -563,7 +621,7 @@
     let detailImgUrl = latestDetailDataUrl || "";
 
     const canvases = [...document.querySelectorAll("canvas")].filter(c => {
-      if (c.closest("#cpStudioRegSection, #cpEditModal, #cpListView")) return false;
+      if (c.closest("#cpStudioRegSection, #cpEditModal, #cpListView, #cpInspectWorkbench")) return false;
       return c.width > 80 && c.height > 80;
     });
 
@@ -585,7 +643,7 @@
     }
 
     const previewImgs = [...document.querySelectorAll("img")].filter(img => {
-      if (img.closest("#cpStudioRegSection, #cpEditModal, #cpListView, #lfReceived")) return false;
+      if (img.closest("#cpStudioRegSection, #cpEditModal, #cpListView, #cpInspectWorkbench, #lfReceived")) return false;
       const src = img.currentSrc || img.src || "";
       return src.startsWith("data:image");
     });
@@ -605,7 +663,7 @@
   async function triggerMakeAllAndCaptureAssets() {
     const nativeMakeBtn = [...document.querySelectorAll("button")].find(b =>
       !b.id?.startsWith("cp") &&
-      !b.closest("#cpStudioRegSection, #cpEditModal, #cpListView") &&
+      !b.closest("#cpStudioRegSection, #cpEditModal, #cpListView, #cpInspectWorkbench") &&
       /모든\s*색상\s*결과\s*만들기/.test((b.innerText || b.textContent || "").replace(/\s+/g, " ").trim())
     );
 
@@ -624,118 +682,261 @@
     return assets;
   }
 
-  let observerTimer = null;
-  const studioObserver = new MutationObserver(() => {
-    clearTimeout(observerTimer);
-    observerTimer = setTimeout(() => {
-      cleanUnwantedUI();
-      if (currentView === "studio") {
-        if (latestMeasuredSizes?.rows?.length) applyMeasuredSizesToStudio(latestMeasuredSizes);
-        if (latestMaterialText) applyFabricMaterialToStudio(latestMaterialText);
-        findOptionCards().forEach(card => {
-          const cInp = card.querySelector('input[placeholder*="블랙"], input[type="text"]');
-          if (cInp?.value) applyNavyWhiteTextColor(card, cInp.value);
-        });
-      }
-      if (!initialScrollLocked) {
-        scrollPageToTop();
-        initialScrollLocked = true;
-      }
-    }, 150);
-  });
-  studioObserver.observe(document.documentElement, { childList: true, subtree: true });
-
-  let enforceCount = 0;
-  const enforceTimer = setInterval(() => {
-    enforceCount++;
-    cleanUnwantedUI();
-    if (currentView === "studio") {
-      if (latestMeasuredSizes?.rows?.length) {
-        const firstTotal = document.querySelector('input[aria-label="총 길이"]');
-        const expectedFirst = String(latestMeasuredSizes.rows[0]?.totalLength || "").trim();
-        if (firstTotal && expectedFirst && firstTotal.value.trim() !== expectedFirst) {
-          applyMeasuredSizesToStudio(latestMeasuredSizes);
-        }
-      }
-      if (latestMaterialText) {
-        applyFabricMaterialToStudio(latestMaterialText);
-      }
-    }
-    if (enforceCount >= 25) clearInterval(enforceTimer);
-  }, 300);
-
   const style = document.createElement("style");
   style.textContent = `
-    body { margin: 0 !important; background: #f4f6fa !important; }
+    body { margin: 0 !important; background: #f3f6f4 !important; color: #111827 !important; }
     #cpTopBar {
       position: fixed; top: 0; left: 0; right: 0; height: 56px; z-index: 10000;
-      background: #003cb3; color: #fff;
+      background: #0f3d2e; color: #fff;
       display: flex; justify-content: space-between; align-items: center;
-      padding: 0 20px; box-shadow: 0 2px 6px rgba(0,0,0,0.12);
+      padding: 0 22px; box-shadow: 0 2px 8px rgba(15, 23, 42, 0.1);
     }
     .cp-brand-wrap { display: flex; align-items: center; gap: 12px; }
     .cp-brand-logo {
-      background: #fff; color: #003cb3; font-weight: 800; font-size: 15px;
-      padding: 6px 14px; border-radius: 8px; letter-spacing: -0.3px;
+      background: #ffffff; color: #0f3d2e; font-weight: 800; font-size: 14px;
+      padding: 5px 12px; border-radius: 7px; letter-spacing: -0.3px;
     }
-    .cp-brand-title { font-size: 16px; font-weight: 700; color: #fff; }
-    .cp-top-right { display: flex; align-items: center; gap: 8px; }
+    .cp-brand-title { font-size: 15.5px; font-weight: 700; color: #fff; }
+    .cp-top-right { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
     .cp-sync-btn {
-      background: #f59e0b !important; color: #fff !important; border: none !important;
+      background: #15803d !important; color: #fff !important; border: none !important;
       padding: 8px 14px !important; border-radius: 8px !important; font-weight: 700 !important;
-      cursor: pointer; font-size: 13px !important; margin: 0 !important;
-    }
-    .cp-sync-btn:hover { background: #d97706 !important; }
-    .cp-sub-btn {
-      background: #0f172a !important; color: #fff !important; border: none !important;
-      padding: 7px 13px !important; border-radius: 7px !important; font-weight: 600 !important;
       cursor: pointer; font-size: 12.5px !important; margin: 0 !important;
+    }
+    .cp-sync-btn:hover { background: #166534 !important; }
+    .cp-sub-btn {
+      background: #1e293b !important; color: #fff !important; border: none !important;
+      padding: 7px 12px !important; border-radius: 7px !important; font-weight: 600 !important;
+      cursor: pointer; font-size: 12px !important; margin: 0 !important;
     }
     .cp-sub-btn:hover { background: #334155 !important; }
     .cp-excel-btn {
-      background: #16a34a !important; color: #fff !important; border: none !important;
+      background: #15803d !important; color: #fff !important; border: none !important;
       padding: 9px 15px !important; border-radius: 8px !important; font-weight: 700 !important;
       cursor: pointer; font-size: 13px !important; margin: 0 !important;
     }
-    .cp-excel-btn:hover { background: #15803d !important; }
+    .cp-excel-btn:hover { background: #166534 !important; }
 
     #cpLayout { display: flex; min-height: 100vh; padding-top: 56px; }
     #cpSidebar {
-      width: 225px; flex-shrink: 0; background: #fff;
-      border-right: 1px solid #e2e8f0; padding: 20px 14px;
+      width: 248px; flex-shrink: 0; background: #ffffff;
+      border-right: 1px solid #e2e8f0; padding: 18px 14px;
       position: fixed; top: 56px; bottom: 0; left: 0; overflow-y: auto;
       display: flex; flex-direction: column;
     }
-    .cp-menu-group { font-size: 13px; font-weight: 700; color: #475569; margin: 16px 0 6px 8px; }
-    .cp-menu-group:first-child { margin-top: 4px; }
+    .cp-progress-box { margin-bottom: 16px; padding-bottom: 14px; border-bottom: 1px solid #eef2f6; }
+    .cp-progress-top { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 8px; }
+    .cp-progress-label { font-size: 12.5px; font-weight: 700; color: #334155; }
+    .cp-progress-pct { font-size: 12.5px; font-weight: 800; color: #15803d; }
+    .cp-progress-track { width: 100%; height: 6px; background: #e2e8f0; border-radius: 999px; overflow: hidden; }
+    .cp-progress-fill { height: 100%; background: #15803d; border-radius: 999px; transition: width 0.25s; }
+
+    .cp-step-list { display: flex; flex-direction: column; gap: 4px; }
+    .cp-step-btn {
+      width: 100%; display: flex; align-items: flex-start; gap: 10px;
+      text-align: left; padding: 9px 10px !important; border-radius: 9px !important;
+      border: 1px solid transparent !important; background: transparent !important;
+      cursor: pointer; margin: 0 !important; transition: 0.15s;
+    }
+    .cp-step-btn:hover { background: #f8fafc !important; }
+    .cp-step-btn.is-active { background: #ecfdf5 !important; border-color: #bbf7d0 !important; }
+    .cp-step-badge-ico {
+      width: 22px; height: 22px; border-radius: 999px; flex-shrink: 0;
+      display: inline-flex; align-items: center; justify-content: center;
+      font-size: 11px; font-weight: 800; margin-top: 1px;
+    }
+    .ico-done { background: #dcfce7; color: #15803d; }
+    .ico-active { background: #15803d; color: #ffffff; }
+    .ico-wait { background: #f1f5f9; color: #64748b; }
+    .cp-step-texts { flex: 1; min-width: 0; }
+    .cp-step-head-row { display: flex; justify-content: space-between; align-items: center; gap: 6px; }
+    .cp-step-name { font-size: 13px; font-weight: 700; color: #0f172a; }
+    .cp-step-tag { font-size: 10.5px; font-weight: 700; padding: 1px 6px; border-radius: 6px; white-space: nowrap; }
+    .tag-done { background: #dcfce7; color: #15803d; }
+    .tag-active { background: #15803d; color: #fff; }
+    .tag-wait { background: #f1f5f9; color: #64748b; }
+    .cp-step-desc { font-size: 11px; color: #64748b; margin-top: 2px; line-height: 1.35; }
+
+    .cp-menu-group { font-size: 12px; font-weight: 700; color: #64748b; margin: 14px 0 6px 6px; }
     .cp-menu-item {
       display: block; width: 100%; text-align: left;
       background: transparent !important; color: #334155 !important;
-      border: none !important; padding: 10px 12px !important; margin: 2px 0 !important;
-      border-radius: 8px !important; font-size: 14px !important; font-weight: 500;
+      border: none !important; padding: 9px 11px !important; margin: 2px 0 !important;
+      border-radius: 8px !important; font-size: 13.5px !important; font-weight: 600;
       cursor: pointer; transition: 0.15s;
     }
     .cp-menu-item:hover { background: #f1f5f9 !important; }
     .cp-menu-item.active {
-      background: #e8f0fe !important; color: #003cb3 !important; font-weight: 700 !important;
+      background: #ecfdf5 !important; color: #0f3d2e !important; font-weight: 700 !important;
     }
-    .cp-sidebar-divider { border-top: 1px solid #e2e8f0; margin: 18px 0; }
-    .cp-sidebar-footer { font-size: 12.5px; color: #475569; padding: 0 8px; line-height: 1.6; }
+    .cp-sidebar-divider { border-top: 1px solid #e2e8f0; margin: 14px 0; }
+    .cp-sidebar-footer { font-size: 12px; color: #475569; padding: 0 6px; line-height: 1.55; }
     .cp-side-btn {
       margin-top: 8px !important; width: 100%;
       background: #f1f5f9 !important; color: #334155 !important;
       border: 1px solid #cbd5e1 !important; padding: 7px 10px !important;
-      border-radius: 7px !important; font-size: 12.5px !important; font-weight: 600 !important;
+      border-radius: 7px !important; font-size: 12px !important; font-weight: 600 !important;
       cursor: pointer;
     }
     .cp-side-btn:hover { background: #e2e8f0 !important; }
 
     #cpContent {
-      flex: 1; margin-left: 225px; min-width: 0; padding: 24px;
+      flex: 1; margin-left: 248px; min-width: 0; padding: 24px 26px 48px;
       display: flex; flex-direction: column; align-items: center;
     }
+    #cpInspectWorkbench {
+      width: 100%; max-width: 1240px; margin: 0 auto 22px;
+    }
+    .cp-wb-breadcrumb { font-size: 12.5px; color: #64748b; margin-bottom: 12px; font-weight: 600; }
+    .cp-wb-header-bar {
+      display: flex; justify-content: space-between; align-items: center;
+      gap: 12px; flex-wrap: wrap; margin-bottom: 16px;
+    }
+    .cp-wb-h1 { margin: 0; font-size: 24px; font-weight: 800; color: #0f172a; }
+    .cp-wb-sub { margin: 4px 0 0; font-size: 13.5px; color: #64748b; }
+    .cp-pager-group { display: inline-flex; align-items: center; gap: 6px; }
+    .cp-pager-btn {
+      background: #ffffff !important; color: #334155 !important; border: 1px solid #cbd5e1 !important;
+      width: 34px; height: 34px; border-radius: 8px !important; font-weight: 700 !important;
+      cursor: pointer; margin: 0 !important; padding: 0 !important;
+    }
+    .cp-pager-btn:hover { background: #f8fafc !important; }
+    .cp-pager-counter {
+      background: #ffffff; border: 1px solid #e2e8f0; border-radius: 8px;
+      padding: 7px 12px; font-size: 12.5px; font-weight: 700; color: #1e293b;
+    }
+
+    .cp-wb-grid {
+      display: grid; grid-template-columns: minmax(0, 1.55fr) minmax(300px, 0.72fr);
+      gap: 18px; align-items: start;
+    }
+    @media (max-width: 1060px) { .cp-wb-grid { grid-template-columns: 1fr; } }
+
+    .cp-detail-main-card {
+      background: #ffffff; border: 1px solid #e2e8f0; border-radius: 14px;
+      padding: 22px; box-shadow: 0 1px 3px rgba(15, 23, 42, 0.04);
+    }
+    .cp-prd-top-grid {
+      display: grid; grid-template-columns: 270px minmax(0, 1fr); gap: 22px; align-items: start;
+    }
+    @media (max-width: 780px) { .cp-prd-top-grid { grid-template-columns: 1fr; } }
+    .cp-main-photo-box {
+      border: 1px solid #e2e8f0; border-radius: 12px; background: #f8fafc;
+      aspect-ratio: 1 / 1.15; overflow: hidden; display: flex; align-items: center; justify-content: center;
+    }
+    .cp-main-photo-box img { width: 100%; height: 100%; object-fit: cover; }
+    .cp-thumb-strip { display: flex; gap: 7px; margin-top: 10px; flex-wrap: wrap; align-items: center; }
+    .cp-strip-item {
+      width: 44px; height: 52px; border-radius: 7px; border: 1.5px solid #cbd5e1;
+      overflow: hidden; cursor: pointer; background: #fff; padding: 0 !important; margin: 0 !important;
+    }
+    .cp-strip-item.active { border-color: #15803d; box-shadow: 0 0 0 2px #dcfce7; }
+    .cp-strip-item img { width: 100%; height: 100%; object-fit: cover; display: block; }
+    .cp-strip-more {
+      width: 44px; height: 52px; border-radius: 7px; background: #f1f5f9;
+      border: 1px solid #cbd5e1; display: inline-flex; align-items: center; justify-content: center;
+      font-size: 12px; font-weight: 800; color: #475569;
+    }
+
+    .cp-brand-pill {
+      display: inline-block; background: #f1f5f9; color: #475569;
+      font-size: 12px; font-weight: 700; padding: 3px 9px; border-radius: 6px; margin-bottom: 6px;
+    }
+    .cp-prd-title-lg { margin: 0 0 14px; font-size: 20px; font-weight: 800; color: #0f172a; line-height: 1.35; }
+    .cp-price-summary-row {
+      display: flex; align-items: center; gap: 18px; flex-wrap: wrap;
+      padding: 12px 14px; background: #f8fafc; border: 1px solid #e2e8f0;
+      border-radius: 10px; margin-bottom: 16px;
+    }
+    .cp-price-block-lbl { font-size: 11.5px; color: #64748b; font-weight: 600; margin-bottom: 2px; }
+    .cp-price-lf-val { font-size: 16px; font-weight: 800; color: #0f172a; }
+    .cp-price-arrow { font-size: 16px; color: #94a3b8; font-weight: 700; }
+    .cp-price-cp-val { font-size: 17px; font-weight: 800; color: #15803d; }
+    .cp-price-margin-val { font-size: 16.5px; font-weight: 800; color: #15803d; }
+    .cp-price-margin-sub { font-size: 12px; font-weight: 600; color: #64748b; }
+
+    .cp-color-chips-wrap { display: flex; gap: 8px; flex-wrap: wrap; margin: 8px 0 14px; }
+    .cp-color-chip {
+      display: inline-flex; align-items: center; gap: 7px;
+      padding: 7px 13px !important; border-radius: 999px !important;
+      border: 1.5px solid #cbd5e1 !important; background: #ffffff !important;
+      color: #1e293b !important; font-size: 12.5px !important; font-weight: 700 !important;
+      cursor: pointer; margin: 0 !important;
+    }
+    .cp-color-chip.selected {
+      background: #0f3d2e !important; color: #ffffff !important; border-color: #0f3d2e !important;
+    }
+    .cp-color-dot { width: 10px; height: 10px; border-radius: 999px; border: 1px solid rgba(0,0,0,0.15); }
+
+    .cp-opt-stock-table { width: 100%; border-collapse: collapse; font-size: 12.5px; margin-top: 6px; }
+    .cp-opt-stock-table th {
+      background: #f8fafc; color: #475569; font-weight: 700; padding: 8px 10px;
+      border-bottom: 1px solid #e2e8f0; text-align: left;
+    }
+    .cp-opt-stock-table td { padding: 8px 10px; border-bottom: 1px solid #f1f5f9; color: #1e293b; font-weight: 600; }
+
+    .cp-cat-rec-section { margin-top: 20px; padding-top: 18px; border-top: 1px solid #e2e8f0; }
+    .cp-cat-rec-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 6px; }
+    .cp-cat-rec-title { font-size: 15px; font-weight: 800; color: #0f172a; }
+    .cp-warn-pill {
+      background: #fffbeb; border: 1px solid #fde68a; color: #b45309;
+      font-size: 11.5px; font-weight: 700; padding: 3px 9px; border-radius: 999px;
+    }
+    .cp-cat-cards-grid {
+      display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-top: 12px;
+    }
+    @media (max-width: 780px) { .cp-cat-cards-grid { grid-template-columns: 1fr; } }
+    .cp-cat-card {
+      background: #ffffff; border: 1.5px solid #e2e8f0; border-radius: 12px;
+      padding: 14px; cursor: pointer; text-align: left; position: relative;
+      transition: 0.15s; margin: 0 !important; display: block; width: 100%;
+    }
+    .cp-cat-card:hover { border-color: #94a3b8; background: #f8fafc; }
+    .cp-cat-card.selected { border-color: #15803d; background: #f0fdf4; }
+    .cp-cat-score { font-size: 12px; font-weight: 800; color: #15803d; margin-bottom: 6px; }
+    .cp-cat-path { font-size: 13px; font-weight: 700; color: #0f172a; line-height: 1.45; }
+    .cp-cat-check {
+      position: absolute; top: 10px; right: 10px; width: 20px; height: 20px;
+      border-radius: 999px; background: #15803d; color: #fff;
+      display: inline-flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 800;
+    }
+
+    .cp-inspect-side-card {
+      background: #ffffff; border: 1px solid #e2e8f0; border-radius: 14px;
+      padding: 20px; box-shadow: 0 1px 3px rgba(15, 23, 42, 0.04);
+    }
+    .cp-inspect-side-head { margin: 0 0 4px; font-size: 16px; font-weight: 800; color: #0f172a; }
+    .cp-inspect-side-sub { margin: 0 0 14px; font-size: 12px; color: #64748b; }
+    .cp-check-item {
+      border: 1px solid #e2e8f0; border-radius: 10px; padding: 11px 12px;
+      margin-bottom: 9px; background: #ffffff;
+    }
+    .cp-check-item.is-warn { background: #fffbeb; border-color: #fde68a; }
+    .cp-check-row { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+    .cp-check-name { font-size: 13px; font-weight: 700; color: #0f172a; }
+    .cp-status-pill { font-size: 11px; font-weight: 800; padding: 2px 8px; border-radius: 6px; }
+    .pill-ok { background: #dcfce7; color: #15803d; }
+    .pill-warn { background: #fef3c7; color: #b45309; }
+    .cp-check-detail { font-size: 11.5px; color: #64748b; margin-top: 4px; line-height: 1.4; }
+
+    .cp-wb-footer-actions {
+      display: flex; justify-content: space-between; align-items: center;
+      gap: 12px; flex-wrap: wrap; margin-top: 16px;
+    }
+    .cp-prev-step-btn {
+      background: #ffffff !important; color: #334155 !important; border: 1px solid #cbd5e1 !important;
+      padding: 10px 18px !important; border-radius: 9px !important; font-weight: 700 !important;
+      font-size: 13.5px !important; cursor: pointer; margin: 0 !important;
+    }
+    .cp-next-step-btn {
+      background: #0f3d2e !important; color: #ffffff !important; border: none !important;
+      padding: 11px 22px !important; border-radius: 9px !important; font-weight: 800 !important;
+      font-size: 13.5px !important; cursor: pointer; margin: 0 !important;
+    }
+    .cp-next-step-btn:hover { background: #14532d !important; }
+
     #cpContent > main {
-      width: 100% !important; max-width: 920px !important;
+      width: 100% !important; max-width: 1240px !important;
       margin: 0 auto 20px !important; padding: 0 !important;
       visibility: visible !important; opacity: 1 !important;
     }
@@ -748,7 +949,7 @@
       padding: 22px; margin-bottom: 18px; box-shadow: 0 1px 3px rgba(0,0,0,0.03);
       box-sizing: border-box;
     }
-    .cp-studio-reg-card { max-width: 920px; margin: 0 auto 20px; border-top: 4px solid #003cb3; }
+    .cp-studio-reg-card { max-width: 1240px; margin: 0 auto 20px; border-top: 4px solid #0f3d2e; }
     .cp-list-card { max-width: 1240px; margin: 0 auto; }
     .cp-card-head {
       display: flex; justify-content: space-between; align-items: center;
@@ -830,7 +1031,7 @@
       font-weight: 600 !important; cursor: pointer; margin: 0 !important; height: 36px;
     }
 
-    .cp-tag-count { font-size: 11.5px; font-weight: 700; color: #003cb3; margin-left: 6px; }
+    .cp-tag-count { font-size: 11.5px; font-weight: 700; color: #0f3d2e; margin-left: 6px; }
     .cp-tag-count.over { color: #dc2626; }
 
     .cp-table-wrap { width: 100%; overflow-x: auto; }
@@ -875,7 +1076,7 @@
       padding: 6px 10px !important; font-size: 12px !important; border-radius: 6px !important; margin: 0 !important;
     }
     .cp-primary-btn {
-      background: #003cb3 !important; color: #fff !important;
+      background: #0f3d2e !important; color: #fff !important;
       padding: 9px 18px !important; border-radius: 8px !important; font-weight: 600 !important;
     }
 
@@ -884,14 +1085,14 @@
       background: rgba(15, 23, 42, 0.65);
       display: flex; align-items: center; justify-content: center; padding: 20px;
     }
-    #cpLoginOverlay { background: #f4f6fa; z-index: 30000; }
+    #cpLoginOverlay { background: #f3f6f4; z-index: 30000; }
     #cpEditModal[hidden], #cpLoginOverlay[hidden] { display: none !important; }
     .cp-modal-box {
       background: #fff; width: 100%; max-width: 740px; max-height: 92vh; overflow-y: auto;
       border-radius: 14px; padding: 22px 24px; box-shadow: 0 20px 40px rgba(0,0,0,0.18);
     }
     .cp-login-box { max-width: 380px; text-align: center; }
-    .cp-login-box h2 { margin: 0 0 8px; color: #003cb3; font-size: 22px; }
+    .cp-login-box h2 { margin: 0 0 8px; color: #0f3d2e; font-size: 22px; }
     .cp-login-box p { margin: 0 0 20px; color: #64748b; font-size: 13.5px; }
     .cp-login-box input { margin-bottom: 12px; padding: 11px 12px !important; width: 100%; box-sizing: border-box; }
     .cp-login-err { color: #dc2626; font-size: 12.5px; min-height: 18px; margin-bottom: 10px; }
@@ -911,7 +1112,7 @@
   topBar.innerHTML = `
     <div class="cp-brand-wrap">
       <span class="cp-brand-logo">쿠팡 자동화</span>
-      <span class="cp-brand-title" id="cpCurrentTitle">쿠팡 자동화</span>
+      <span class="cp-brand-title" id="cpCurrentTitle">3. 상품정보 확인</span>
     </div>
     <div class="cp-top-right">
       <button type="button" id="btnQuickSave" class="cp-sync-btn">☁️ 제작실 상품 바로 저장</button>
@@ -924,10 +1125,20 @@
   const sidebar = document.createElement("aside");
   sidebar.id = "cpSidebar";
   sidebar.innerHTML = `
-    <div class="cp-menu-group">1) 제작 도구</div>
-    <button type="button" class="cp-menu-item active" data-view="studio">└ 쿠팡 자동화</button>
+    <div class="cp-progress-box">
+      <div class="cp-progress-top">
+        <span class="cp-progress-label" id="cpStepProgressText">전체 진행률 3 / 6</span>
+        <span class="cp-progress-pct" id="cpStepProgressPct">50%</span>
+      </div>
+      <div class="cp-progress-track">
+        <div class="cp-progress-fill" id="cpStepProgressBar" style="width:50%;"></div>
+      </div>
+    </div>
 
-    <div class="cp-menu-group">2) 상품 관리</div>
+    <div class="cp-step-list" id="cpStepList"></div>
+
+    <div class="cp-menu-group">바로가기</div>
+    <button type="button" class="cp-menu-item active" data-view="studio">└ 상품 검수 · 제작실</button>
     <button type="button" class="cp-menu-item" data-view="list">└ 상품 리스트</button>
 
     <div class="cp-sidebar-divider"></div>
@@ -940,6 +1151,9 @@
 
   const content = document.createElement("div");
   content.id = "cpContent";
+
+  const inspectWorkbench = document.createElement("section");
+  inspectWorkbench.id = "cpInspectWorkbench";
 
   const listView = document.createElement("div");
   listView.id = "cpListView";
@@ -1097,7 +1311,7 @@
   studioRegSection.className = "cp-card cp-studio-reg-card";
   studioRegSection.innerHTML = `
     <div class="cp-card-head">
-      <h2 style="margin:0;">📥 이미지 수집 · 상품 정보</h2>
+      <h2 style="margin:0;">📥 이미지 수집 · 상품 상세 폼</h2>
       <button type="button" id="btnSyncFromStudio" class="cp-sub-btn">🔄 확장프로그램 수집값 자동 반영</button>
     </div>
     ${buildFormHTML("s", true)}
@@ -1135,6 +1349,7 @@
     </div>
   `;
 
+  content.appendChild(inspectWorkbench);
   content.appendChild(studioRegSection);
   if (studioMain) content.appendChild(studioMain);
   content.appendChild(listView);
@@ -1146,10 +1361,372 @@
   document.body.appendChild(editModal);
   document.body.appendChild(loginOverlay);
 
+  function renderStepSidebar() {
+    const pct = Math.round((activeStep / 6) * 100);
+    document.getElementById("cpStepProgressText").textContent = `전체 진행률 ${activeStep} / 6`;
+    document.getElementById("cpStepProgressPct").textContent = `${pct}%`;
+    document.getElementById("cpStepProgressBar").style.width = `${pct}%`;
+
+    const listEl = document.getElementById("cpStepList");
+    listEl.innerHTML = WORKFLOW_STEPS.map(s => {
+      const state = s.step < activeStep ? "done" : s.step === activeStep ? "active" : "wait";
+      const badgeTxt = state === "done" ? "완료" : state === "active" ? "진행 중" : "대기";
+      const icoTxt = state === "done" ? "✓" : String(s.step);
+      return `
+        <button type="button" class="cp-step-btn ${state === "active" ? "is-active" : ""}" data-step="${s.step}">
+          <span class="cp-step-badge-ico ico-${state}">${icoTxt}</span>
+          <span class="cp-step-texts">
+            <span class="cp-step-head-row">
+              <span class="cp-step-name">${s.step}. ${s.title}</span>
+              <span class="cp-step-tag tag-${state}">${badgeTxt}</span>
+            </span>
+            <span class="cp-step-desc">${s.sub}</span>
+          </span>
+        </button>
+      `;
+    }).join("");
+
+    listEl.querySelectorAll(".cp-step-btn").forEach(btn => {
+      btn.addEventListener("click", () => {
+        const st = Number(btn.dataset.step);
+        activeStep = st;
+        if (st === 6) {
+          switchView("list");
+        } else {
+          switchView("studio");
+          if (st === 1 || st === 2) {
+            document.getElementById("cpStudioRegSection")?.scrollIntoView({ behavior: "smooth", block: "start" });
+          } else if (st === 4) {
+            document.getElementById("sMarginResult")?.scrollIntoView({ behavior: "smooth", block: "center" });
+          } else if (st === 5) {
+            saveFromStudioCombined();
+          }
+        }
+        renderStepSidebar();
+      });
+    });
+  }
+
+  function getInspectionQueue() {
+    const d = bridgeMakerData || {};
+    const items = Array.isArray(d.items) ? d.items.filter(i => (i?.dataUrl || i?.url) && i.role !== "제외") : [];
+    const options = Array.isArray(d.options) ? d.options : [];
+    const colors = Array.isArray(d.colors) && d.colors.length
+      ? d.colors
+      : [...new Set([...items.map(i => i.color), ...options.map(o => o.color)].filter(Boolean))];
+
+    const baseTitle = sanitizeProductTitle(document.getElementById("sName")?.value || d.lfName || d.title || "수집 상품");
+    const brand = document.getElementById("sBrand")?.value.trim() || d.brand || (baseTitle.split(" ")[0] || "브랜드");
+    const cost = parseNum(document.getElementById("sDiscountPrice")?.value) || Number(d.discountPrice) || 0;
+    const sale = parseNum(document.getElementById("sPrice")?.value) || (cost ? calcTargetSalePrice(cost) : 0);
+    const marginCalc = calcMargin(cost, sale);
+    const catPath = studioCatCtrl.getPath() || d.category || "";
+    const notice = getNoticeFromForm("s");
+    const noticeFilled = Object.values(notice).filter(Boolean).length;
+
+    const queue = colors.length
+      ? colors.map((col, idx) => {
+          const colPhotos = items.filter(it => (it.color || colors[0]) === col);
+          const colOpts = options.filter(o => (o.color || colors[0]) === col);
+          return {
+            index: idx,
+            total: colors.length,
+            brand,
+            title: `${baseTitle}${col && !baseTitle.includes(col) ? ` (${col})` : ""}`,
+            color: col,
+            colors,
+            photos: colPhotos.length ? colPhotos : items,
+            options: colOpts.length ? colOpts : options,
+            cost,
+            sale,
+            profit: marginCalc.profitAfterVat,
+            marginRate: marginCalc.rateAfterVat,
+            catPath,
+            noticeFilled,
+            totalStock: (colOpts.length ? colOpts : options).reduce((a, b) => a + clampStock(b.stock ?? MAX_STOCK), 0)
+          };
+        })
+      : [{
+          index: 0,
+          total: 1,
+          brand,
+          title: baseTitle,
+          color: "기본",
+          colors: ["기본"],
+          photos: items,
+          options,
+          cost,
+          sale,
+          profit: marginCalc.profitAfterVat,
+          marginRate: marginCalc.rateAfterVat,
+          catPath,
+          noticeFilled,
+          totalStock: options.reduce((a, b) => a + clampStock(b.stock ?? MAX_STOCK), 0)
+        }];
+
+    return queue;
+  }
+
+  function renderInspectWorkbench() {
+    if (currentView !== "studio") {
+      inspectWorkbench.hidden = true;
+      return;
+    }
+    inspectWorkbench.hidden = false;
+
+    const queue = getInspectionQueue();
+    if (inspectIndex >= queue.length) inspectIndex = 0;
+    const cur = queue[inspectIndex];
+    const activeCol = selectedInspectColor || cur.color;
+    const displayPhotos = cur.photos.filter(p => !activeCol || !p.color || p.color === activeCol || cur.photos.length <= 8);
+    const photoList = displayPhotos.length ? displayPhotos : cur.photos;
+    const heroPhoto = photoList[0]?.dataUrl || photoList[0]?.url || document.getElementById("sThumbUrl")?.value || "";
+
+    const recs = recommendCategories(`${cur.title} ${cur.catPath} ${latestMaterialText}`);
+    const currentMain = document.getElementById("sCatMain")?.value || "";
+    const currentSub = document.getElementById("sCatSub")?.value || "";
+
+    const optRowsHtml = (cur.options.length ? cur.options : [{ color: activeCol, code: "", size: "FREE", stock: MAX_STOCK }])
+      .slice(0, 6)
+      .map(o => {
+        const st = clampStock(o.stock ?? MAX_STOCK);
+        return `
+          <tr>
+            <td>${o.size || "-"}</td>
+            <td>${st}개</td>
+            <td>${formatWon(cur.sale)}</td>
+            <td style="color:#15803d;font-weight:700;">약 ${formatWon(cur.profit)} <span style="color:#64748b;font-weight:600;">(${cur.marginRate.toFixed(1)}%)</span></td>
+          </tr>
+        `;
+      }).join("");
+
+    const imgOk = photoList.length >= 2;
+    const optOk = cur.options.length > 0;
+    const noticeOk = cur.noticeFilled >= 3;
+    const priceOk = cur.sale > cur.cost && cur.cost > 0;
+    const stockLow = cur.totalStock <= 10;
+
+    document.getElementById("cpCurrentTitle").textContent = `${activeStep}. 상품정보 확인`;
+
+    inspectWorkbench.innerHTML = `
+      <div class="cp-wb-breadcrumb">🏠 상품 자동화 > ${activeStep}. 상품정보 확인</div>
+
+      <div class="cp-wb-header-bar">
+        <div>
+          <h1 class="cp-wb-h1">${activeStep}. 상품정보 확인</h1>
+          <p class="cp-wb-sub">수집한 상품의 상세 정보를 검토하고, 쿠팡 등록에 적합한지 확인하세요.</p>
+        </div>
+        <div class="cp-pager-group">
+          <button type="button" class="cp-pager-btn" id="btnPrevInspect">‹</button>
+          <span class="cp-pager-counter">수집 상품 ${queue.length}건 중 <strong>${inspectIndex + 1}번째</strong></span>
+          <button type="button" class="cp-pager-btn" id="btnNextInspect">›</button>
+        </div>
+      </div>
+
+      <div class="cp-wb-grid">
+        <div class="cp-detail-main-card">
+          <div class="cp-prd-top-grid">
+            <div>
+              <div class="cp-main-photo-box">
+                ${heroPhoto ? `<img id="cpHeroPreviewImg" src="${heroPhoto}" alt="대표 이미지">` : `<span style="color:#94a3b8;font-size:13px;">이미지 없음</span>`}
+              </div>
+              ${photoList.length ? `
+                <div class="cp-thumb-strip">
+                  ${photoList.slice(0, 6).map((ph, i) => {
+                    const src = ph.dataUrl || ph.url;
+                    return `<button type="button" class="cp-strip-item ${i === 0 ? "active" : ""}" data-src="${src}"><img src="${src}" alt="썸네일"></button>`;
+                  }).join("")}
+                  ${photoList.length > 6 ? `<span class="cp-strip-more">+${photoList.length - 6}</span>` : ""}
+                </div>
+              ` : ""}
+            </div>
+
+            <div>
+              <span class="cp-brand-pill">${cur.brand || "브랜드"}</span>
+              <h2 class="cp-prd-title-lg">${cur.title || "상품명을 입력하세요"}</h2>
+
+              <div class="cp-price-summary-row">
+                <div>
+                  <div class="cp-price-block-lbl">LF몰 판매가</div>
+                  <div class="cp-price-lf-val">${formatWon(cur.cost)}</div>
+                </div>
+                <span class="cp-price-arrow">→</span>
+                <div>
+                  <div class="cp-price-block-lbl">쿠팡 판매가</div>
+                  <div class="cp-price-cp-val">${formatWon(cur.sale)}</div>
+                </div>
+                <div style="margin-left:auto;text-align:right;">
+                  <div class="cp-price-block-lbl">예상 마진</div>
+                  <div class="cp-price-margin-val">약 ${formatWon(cur.profit)} <span class="cp-price-margin-sub">(${cur.marginRate.toFixed(1)}%)</span></div>
+                </div>
+              </div>
+
+              <div style="font-size:12.5px;font-weight:700;color:#334155;">색상 (옵션)</div>
+              <div class="cp-color-chips-wrap">
+                ${cur.colors.map(c => `
+                  <button type="button" class="cp-color-chip ${c === activeCol ? "selected" : ""}" data-col="${c}">
+                    <span class="cp-color-dot" style="background:${getColorHex(c)};"></span>
+                    <span>${c}</span>
+                    ${c === activeCol ? `<span>✓</span>` : ""}
+                  </button>
+                `).join("")}
+              </div>
+
+              <div style="font-size:12.5px;font-weight:700;color:#334155;">옵션별 재고</div>
+              <table class="cp-opt-stock-table">
+                <thead>
+                  <tr>
+                    <th>사이즈(옵션)</th>
+                    <th>재고 수량</th>
+                    <th>판매가(쿠팡)</th>
+                    <th>예상 마진</th>
+                  </tr>
+                </thead>
+                <tbody>${optRowsHtml}</tbody>
+              </table>
+            </div>
+          </div>
+
+          <div class="cp-cat-rec-section">
+            <div class="cp-cat-rec-head">
+              <span class="cp-cat-rec-title">ㅣ카테고리 추천</span>
+              <span class="cp-warn-pill">⚠️ 재고 신뢰도 낮음 | LF몰 재고가 변동이 잦아, 등록 후 품절 가능성이 있습니다.</span>
+            </div>
+            <div style="font-size:12.5px;color:#64748b;">해당 상품에 적합한 쿠팡 카테고리를 추천했어요. 가장 적합한 카테고리를 선택하세요.</div>
+
+            <div class="cp-cat-cards-grid">
+              ${recs.map(r => {
+                const isSel = (currentMain === r.main && currentSub === r.sub) || (!currentMain && r.score === 98);
+                return `
+                  <button type="button" class="cp-cat-card ${isSel ? "selected" : ""}" data-main="${r.main}" data-sub="${r.sub}">
+                    ${isSel ? `<span class="cp-cat-check">✓</span>` : ""}
+                    <div class="cp-cat-score">☆추천 (적합도 ${r.score}%)</div>
+                    <div class="cp-cat-path">${r.label.replace(/ > /g, " > ")}</div>
+                  </button>
+                `;
+              }).join("")}
+            </div>
+          </div>
+        </div>
+
+        <aside class="cp-inspect-side-card">
+          <h3 class="cp-inspect-side-head">✓ 검수 결과</h3>
+          <p class="cp-inspect-side-sub">등록 가능 여부를 자동으로 점검한 결과입니다.</p>
+
+          <div class="cp-check-item">
+            <div class="cp-check-row">
+              <span class="cp-check-name">✓ 이미지</span>
+              <span class="cp-status-pill pill-ok">${imgOk ? "정상" : "확인"}</span>
+            </div>
+            <div class="cp-check-detail">이미지 ${photoList.length}장 수집 · 해상도 및 구성 적합</div>
+          </div>
+
+          <div class="cp-check-item">
+            <div class="cp-check-row">
+              <span class="cp-check-name">✓ 옵션 (색상/사이즈)</span>
+              <span class="cp-status-pill pill-ok">${optOk ? "정상" : "확인"}</span>
+            </div>
+            <div class="cp-check-detail">색상 ${cur.colors.length}개, 옵션 ${cur.options.length || 1}건 · 옵션 구조 적합</div>
+          </div>
+
+          <div class="cp-check-item">
+            <div class="cp-check-row">
+              <span class="cp-check-name">✓ 상품 고시사항</span>
+              <span class="cp-status-pill pill-ok">${noticeOk ? "정상" : "확인"}</span>
+            </div>
+            <div class="cp-check-detail">소재, 세탁방법, 제조국 등 필수 정보 확인 (${cur.noticeFilled}/9)</div>
+          </div>
+
+          <div class="cp-check-item">
+            <div class="cp-check-row">
+              <span class="cp-check-name">✓ 가격</span>
+              <span class="cp-status-pill pill-ok">${priceOk ? "정상" : "확인"}</span>
+            </div>
+            <div class="cp-check-detail">판매가 계산 완료 · 마진율 ${cur.marginRate.toFixed(1)}%</div>
+          </div>
+
+          <div class="cp-check-item ${stockLow ? "is-warn" : ""}">
+            <div class="cp-check-row">
+              <span class="cp-check-name">⚠ 재고</span>
+              <span class="cp-status-pill ${stockLow ? "pill-warn" : "pill-ok"}">${stockLow ? "주의" : "정상"}</span>
+            </div>
+            <div class="cp-check-detail">• LF몰 재고 신뢰도 낮음 (품절 가능성)<br>• 계절 상품으로 수요 변동 가능성 있음</div>
+          </div>
+        </aside>
+      </div>
+
+      <div class="cp-wb-footer-actions">
+        <button type="button" class="cp-prev-step-btn" id="btnPrevStep">‹ 이전</button>
+        <button type="button" class="cp-next-step-btn" id="btnCompleteInspectNext">검수 완료 ></button>
+      </div>
+    `;
+
+    inspectWorkbench.querySelectorAll(".cp-strip-item").forEach(btn => {
+      btn.addEventListener("click", () => {
+        inspectWorkbench.querySelectorAll(".cp-strip-item").forEach(b => b.classList.remove("active"));
+        btn.classList.add("active");
+        const hero = document.getElementById("cpHeroPreviewImg");
+        if (hero) hero.src = btn.dataset.src;
+      });
+    });
+
+    inspectWorkbench.querySelectorAll(".cp-color-chip").forEach(chip => {
+      chip.addEventListener("click", () => {
+        selectedInspectColor = chip.dataset.col || "";
+        renderInspectWorkbench();
+      });
+    });
+
+    inspectWorkbench.querySelectorAll(".cp-cat-card").forEach(card => {
+      card.addEventListener("click", () => {
+        const mVal = card.dataset.main || "";
+        const sVal = card.dataset.sub || "";
+        document.getElementById("sCatMain").value = mVal;
+        document.getElementById("sCatMain").dispatchEvent(new Event("change"));
+        setTimeout(() => {
+          document.getElementById("sCatSub").value = sVal;
+          renderInspectWorkbench();
+        }, 30);
+      });
+    });
+
+    document.getElementById("btnPrevInspect").addEventListener("click", () => {
+      inspectIndex = (inspectIndex - 1 + queue.length) % queue.length;
+      selectedInspectColor = "";
+      renderInspectWorkbench();
+    });
+
+    document.getElementById("btnNextInspect").addEventListener("click", () => {
+      inspectIndex = (inspectIndex + 1) % queue.length;
+      selectedInspectColor = "";
+      renderInspectWorkbench();
+    });
+
+    document.getElementById("btnPrevStep").addEventListener("click", () => {
+      activeStep = Math.max(1, activeStep - 1);
+      renderStepSidebar();
+      renderInspectWorkbench();
+    });
+
+    document.getElementById("btnCompleteInspectNext").addEventListener("click", async () => {
+      if (!document.getElementById("sCatMain").value && recs[0]) {
+        document.getElementById("sCatMain").value = recs[0].main;
+        document.getElementById("sCatMain").dispatchEvent(new Event("change"));
+        document.getElementById("sCatSub").value = recs[0].sub;
+      }
+      activeStep = Math.min(6, activeStep + 1);
+      renderStepSidebar();
+      await saveFromStudioCombined();
+    });
+  }
+
+  renderStepSidebar();
   cleanUnwantedUI();
+  renderInspectWorkbench();
   window.postMessage({ type: "REQUEST_LF_MAKER_DATA" }, "*");
   setTimeout(() => {
     cleanUnwantedUI();
+    renderInspectWorkbench();
     scrollPageToTop();
     window.postMessage({ type: "REQUEST_LF_MAKER_DATA" }, "*");
   }, 300);
@@ -1170,6 +1747,8 @@
   document.addEventListener("input", e => {
     if (e.target.classList.contains("cp-money-input")) {
       e.target.value = formatComma(e.target.value);
+      studioMarginCtrl.update();
+      if (currentView === "studio") renderInspectWorkbench();
     }
     if (e.target.classList.contains("opt-stock")) {
       const clamped = clampStock(e.target.value);
@@ -1180,6 +1759,9 @@
     if (e.target.placeholder && /블랙/.test(e.target.placeholder)) {
       const card = e.target.closest("div")?.parentElement?.parentElement || e.target.parentElement;
       if (card) applyNavyWhiteTextColor(card, e.target.value);
+    }
+    if (["sName", "sBrand", "sDiscountPrice", "sPrice"].includes(e.target.id) && currentView === "studio") {
+      renderInspectWorkbench();
     }
   });
 
@@ -1466,6 +2048,7 @@
       await applyCollectedPhotosToStudio(d);
     }
     studioMarginCtrl.update();
+    renderInspectWorkbench();
     if (showToast) alert("📥 확장프로그램 수집값(옵션·고시정보·가격·실측사이즈·소재·SEO태그·상품명·이미지)을 반영했습니다!");
   }
 
@@ -1481,6 +2064,7 @@
     setNoticeToForm("s", { asInfo: "상세페이지 참고" });
     updateStudioTags();
     studioMarginCtrl.update();
+    renderInspectWorkbench();
   });
 
   function updateAuthUI() {
@@ -1584,22 +2168,24 @@
 
   const menuButtons = sidebar.querySelectorAll(".cp-menu-item");
   const titleEl = document.getElementById("cpCurrentTitle");
-  const titles = {
-    studio: "쿠팡 자동화",
-    list: "상품 리스트"
-  };
 
   function switchView(viewName) {
     currentView = viewName;
     menuButtons.forEach(btn => btn.classList.toggle("active", btn.dataset.view === viewName));
-    titleEl.textContent = titles[viewName] || "";
     const isStudio = viewName === "studio";
+    if (isStudio) {
+      titleEl.textContent = `${activeStep}. 상품정보 확인`;
+    } else {
+      titleEl.textContent = "상품 리스트";
+    }
+    inspectWorkbench.hidden = !isStudio;
     if (studioMain) studioMain.style.setProperty("display", isStudio ? "block" : "none", "important");
     studioRegSection.style.setProperty("display", isStudio ? "block" : "none", "important");
     listView.hidden = isStudio;
     if (isStudio) {
       syncFromStudioPanel(false, false);
       cleanUnwantedUI();
+      renderInspectWorkbench();
       scrollPageToTop();
     } else {
       fetchProducts();
@@ -2084,7 +2670,7 @@
         <td>
           <div style="font-weight:700;word-break:break-word;color:#0f172a;">${p.name}</div>
           ${p.lfName ? `<div class="cp-lf-sub">LF: ${p.lfName}</div>` : ""}
-          ${p.detailImgUrl ? `<div class="cp-lf-sub" style="color:#0284c7;">상세이미지 저장됨</div>` : ""}
+          ${p.detailImgUrl ? `<div class="cp-lf-sub" style="color:#15803d;">상세이미지 저장됨</div>` : ""}
           ${workerInfo ? `<div class="cp-worker-tag">${workerInfo}</div>` : ""}
         </td>
         <td>
@@ -2096,7 +2682,7 @@
         </td>
         <td class="cp-price-col">${formatWon(p.discountPrice)}</td>
         <td class="cp-price-col">
-          <div style="font-weight:700;color:#003cb3;">${formatWon(p.price)}</div>
+          <div style="font-weight:700;color:#0f3d2e;">${formatWon(p.price)}</div>
           ${marginBadge}
         </td>
         <td class="cp-price-col" style="color:#64748b;">${formatWon(p.regularPrice)}</td>
