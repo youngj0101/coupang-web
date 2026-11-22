@@ -109,9 +109,20 @@ function lfCopyFacts3(d, override={}) {
   const tokens=uniq([gender,cp.season,materialWord,patternWord,cp.neck?.replace(/\s/g,''),...rawFeatures,cp.feature?.replace('슬림한 실루엣','슬림핏'),cp.style,colors.length===1&&colors[0],colors.length>1&&colors.length+'컬러',sizes.length>1&&sizes.length+'사이즈',d.code&&/^[A-Z\d_-]{3,24}$/i.test(d.code)?d.code:''].filter(Boolean)).filter(w=>w!==brand&&w!==cat);
   const mid=tokens.slice(0,5); const words=uniq([brand,...mid,cat]);const name=words.join(' ');
   const para=[];const detachable=/(?:탈부착|탈착|분리형)\s*(?:퍼|털)?\s*(?:카라|칼라|후드)/.exec(title)?.[0];const part=detachable?.replace(/^(탈부착|탈착|분리형)\s*/,'').replace(/퍼\s*(카라|칼라)/,'퍼 카라');const length=/미들|미디엄|미디\s*기장/.test(title)?'미들 기장':/롱\s*(?:기장|다운|패딩|코트)/.test(title)?'롱 기장':/숏\s*(?:기장|다운|패딩|점퍼)/.test(title)?'숏 기장':'';const type=/다운\s*점퍼/.test(title)?'다운 점퍼':cat;
-  if(part)para.push((length?length+'의 ':'')+(type||'디자인')+'에 탈부착 가능한 '+part+'를 더했습니다. '+(/카라|칼라/.test(part)?'카라를 떼면 목선이 한결 간결해져 두 가지 분위기로 입을 수 있습니다.':'후드를 분리해 원하는 스타일로 입을 수 있습니다.'));
-  else {const details=uniq([cp.neck,patternWord,cp.feature,...rawFeatures.filter(v=>!['탈부착','하프'].includes(v))]).slice(0,2);if(details.length)para.push(details.join(' · ')+' 디테일을 살린 '+[length,type].filter(Boolean).join(' ')+'입니다.');else if(length&&type)para.push(length+'으로 디자인한 '+type+'입니다.');else {const clean=title.split(/[,|]/).pop().replace(/[A-Z]{2,}\d[A-Z\d-]+/gi,'').trim();if(clean)para.push(clean.replace(/[.!?]$/,'')+'입니다.')}}
-  return {brand,cat,cp,extras,name,desc:para.map(tidy).filter(Boolean).join('\n\n').slice(0,2450),review:!brand||!cat||name.split(/\s+/).length<6||name.split(/\s+/).length>7};
+  const productType=type||'의류';const cleanColors=colors.filter(c=>!/[\[\]<>]/.test(c));
+  const add=s=>{if(s&&!para.includes(s)&&para.length<4)para.push(s)};
+  if(length)add(length+'으로 디자인한 '+productType+'입니다.');
+  if(part){add((part==='퍼 카라'?'목선을 따라 퍼 카라를 덧댔습니다.':part+' 디테일이 들어갑니다.'));add((/카라|칼라/.test(part)?'카라를 분리하면 한결 간결한 목선으로 입을 수 있습니다.':'후드를 탈부착해 두 가지 모습으로 입을 수 있습니다.'))}
+  if(cp.pattern)add(cp.pattern.replace('무지','무지 디자인').replace(' 패턴',' 무늬')+'가 특징입니다.'.replace(/^가/,(cp.pattern==='무지'?'이':'가')));
+  if(cp.neck)add(cp.neck+'으로 목선을 마무리했습니다.');
+  if(cp.material)add('소재 포인트: '+cp.material+'입니다.');
+  for(const [re,line] of [[/집업|지퍼\s*여밈/,'앞면은 지퍼로 여미는 디자인입니다.'],[/케이블/,'케이블 짜임이 표면에 입체적인 무늬를 만듭니다.'],[/플리츠/,'주름을 잡아 플리츠 라인을 살렸습니다.'],[/자수/,'자수 디테일을 더했습니다.'],[/코듀로이/,'코듀로이 특유의 골이 디자인 포인트입니다.'],[/포켓/,'포켓을 더한 디자인입니다.']])if(re.test(title))add(line);
+  if(cleanColors.length>1)add(cleanColors.join(' · ')+' 두 색상으로 구성됩니다.'.replace('두 색상',cleanColors.length===2?'두 색상':'색상'));else if(cleanColors.length===1)add('색상은 '+cleanColors[0]+'입니다.');
+  if(cp.feature)add('디자인 특징: '+cp.feature);if(cp.style)add('스타일: '+cp.style);if(cp.season)add('시즌: '+cp.season);
+  if(brand||cat)add([brand,gender,cat].filter(Boolean).join(' ')+'입니다.');
+  // No invented benefits: leave the remaining draft lines blank for the seller.
+  while(para.length<4)para.push('');
+  return {brand,cat,cp,extras,name,desc:para.map(tidy).join('\n').slice(0,2450),review:!brand||!cat||name.split(/\s+/).length<6||name.split(/\s+/).length>7};
 }
 function applyWear32(d){const variants=d.variants?.length?d.variants:[d];const keys=['신축성','두께감','촉감','비침','안감'];const issues=[];for(const [i,k] of keys.entries()){const sel=document.getElementById('fabricVal'+i);if(!sel)continue;const values=variants.map(p=>p.wear?.[k]||'');let v=values[0]&&values.every(x=>x===values[0])?values[0]:'';
  if(v==='부분 안감'&&!Array.from(sel.options).some(o=>o.value===v))sel.add(new Option(v,v));if(!Array.from(sel.options).some(o=>o.value===v))v='';sel.value=v;sel.dispatchEvent(new Event('change',{bubbles:true}));if(!v)issues.push(k)}const lab=document.getElementById('fabricVal4');if(lab){let hint=document.getElementById('wear32Hint');if(!hint){hint=document.createElement('p');hint.id='wear32Hint';lab.closest('fieldset')?.append(hint)}hint.textContent=issues.length?'미확인 또는 색상별 값이 다름: '+issues.join(', ')+' (자동 강조 안 함)':'LF몰 착용 정보 5개 항목 반영 완료'}}
@@ -122,7 +133,7 @@ function applyCopy3(d){
   const initial=lfCopyFacts3(d);if(initial.brand){set('brand',initial.brand);set('sBrand',initial.brand)}set('prod',initial.cat);set('sName',initial.name);
   Object.entries(initial.cp).forEach(([k,v])=>{const e=document.querySelector('.lfCpGrid [data-cp="'+k+'"]');if(e&&[...e.options].some(o=>o.value===v)){e.value=v;emit(e)}});
   document.querySelectorAll('#lfCpChecks input[type=checkbox]').forEach(e=>{e.checked=initial.extras.includes(e.value)});
-  const cp=el('copy'),memo=el('sCopy');if(cp){cp.dataset.edited='1';set('copy',initial.desc)}set('sCopy',initial.desc);
+  const cp=el('copy'),memo=el('sCopy');if(cp){cp.dataset.edited='1';set('copy',initial.desc);const existing=document.getElementById('lf33DraftHint');if(existing)existing.remove();const hint=document.createElement('small');hint.id='lf33DraftHint';hint.textContent=initial.desc.split('\n').filter(Boolean).length<4?'확인된 특징이 부족해 일부 줄을 비웠습니다. 직접 보완해 주세요.':'상품 정보에서 네 줄로 작성했습니다. 직접 수정할 수 있습니다.';cp.after(hint)}set('sCopy',initial.desc);
   if(cp&&memo&&!cp.dataset.lfCopySync){cp.dataset.lfCopySync='1';cp.addEventListener('input',()=>{memo.value=cp.value});memo.addEventListener('input',()=>{if(cp.value!==memo.value){cp.value=memo.value;cp.dataset.edited='1';cp.dispatchEvent(new Event('input',{bubbles:true}))}})}
   const nm=el('sName');if(nm){let tools=el('lfTitleTools3');if(!tools){tools=document.createElement('div');tools.id='lfTitleTools3';nm.closest('label')?.insertAdjacentElement('afterend',tools)}tools.replaceChildren();tools.style.cssText='font-size:12px;color:#45584d;align-self:end;padding-bottom:8px';const msg=document.createElement('span'),btn=document.createElement('button');btn.type='button';btn.textContent='상품명 다시 제안';btn.onclick=()=>{const f=lfCopyFacts3(d,{brand:el('sBrand')?.value||el('brand')?.value,category:el('prod')?.value});set('sName',f.name);report(f)};const report=f=>{msg.textContent=f.review?'브랜드·상품 종류 또는 확인된 단어가 부족합니다. 제안명을 직접 보완해 주세요. ':'브랜드 첫 단어 · 상품 종류 마지막 단어. 필요하면 직접 수정하세요. '};report(initial);tools.append(msg,btn)}
   return initial;
