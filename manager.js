@@ -354,12 +354,38 @@
   async function urlToFile(url, filename = "image.jpg") {
     try {
       const res = await fetch(url, { mode: "cors" });
-      if (!res.ok) throw new Error("fetch failed");
-      const blob = await res.blob();
-      const mime = blob.type || "image/jpeg";
-      const ext = mime.includes("png") ? "png" : mime.includes("webp") ? "webp" : "jpg";
-      const finalName = filename.replace(/\.[a-z0-9]+$/i, "") + "." + ext;
-      return new File([blob], finalName, { type: mime });
+      if (res.ok) {
+        const blob = await res.blob();
+        const mime = blob.type || "image/jpeg";
+        const ext = mime.includes("png") ? "png" : mime.includes("webp") ? "webp" : "jpg";
+        return new File([blob], filename.replace(/\.[a-z0-9]+$/i, "") + "." + ext, { type: mime });
+      }
+    } catch {}
+
+    // CORS fetch 실패 시 Image 객체로 로드 후 Canvas 변환 시도
+    try {
+      const file = await new Promise((resolve, reject) => {
+        const im = new Image();
+        im.crossOrigin = "anonymous";
+        im.onload = () => {
+          try {
+            const c = document.createElement("canvas");
+            c.width = im.naturalWidth || im.width || 600;
+            c.height = im.naturalHeight || im.height || 600;
+            const ctx = c.getContext("2d");
+            ctx.drawImage(im, 0, 0);
+            c.toBlob(b => {
+              if (!b) return reject(new Error("toBlob null"));
+              resolve(new File([b], filename.replace(/\.[a-z0-9]+$/i, "") + ".jpg", { type: "image/jpeg" }));
+            }, "image/jpeg", 0.9);
+          } catch (e) {
+            reject(e);
+          }
+        };
+        im.onerror = () => reject(new Error("img load fail"));
+        im.src = url;
+      });
+      return file;
     } catch {
       return null;
     }
@@ -371,6 +397,7 @@
       const dt = new DataTransfer();
       dt.items.add(file);
       input.files = dt.files;
+      input.dispatchEvent(new Event("input", { bubbles: true }));
       input.dispatchEvent(new Event("change", { bubbles: true }));
     } catch {}
   }
@@ -394,18 +421,19 @@
   }
 
   function findOptionCards() {
-    const headings = [...document.querySelectorAll("h1, h2, h3, h4, div, p, b, strong, span")].filter(el =>
-      !el.id?.startsWith("cp") &&
-      !el.closest("#cpStudioRegSection, #cpEditModal") &&
-      el.children.length <= 2 &&
-      /^옵션\s*\d+$/.test((el.innerText || el.textContent || "").replace(/\s+/g, " ").trim())
-    );
+    const colorInputs = [...document.querySelectorAll('input[type="text"], input:not([type])')].filter(inp => {
+      if (inp.closest("#cpStudioRegSection, #cpEditModal")) return false;
+      const ph = inp.placeholder || "";
+      const nearText = ((inp.closest("div")?.parentElement?.innerText) || "").replace(/\s+/g, " ");
+      return /블랙/.test(ph) || /색상명\s*\(필수\)/.test(nearText);
+    });
 
     const cards = [];
-    for (const h of headings) {
-      let cur = h.parentElement;
+    for (const cInp of colorInputs) {
+      let cur = cInp.parentElement;
       for (let i = 0; i < 6 && cur; i++) {
-        if (cur.querySelectorAll('input[type="file"]').length >= 4) {
+        const fCount = cur.querySelectorAll('input[type="file"]').length;
+        if (fCount >= 4 && fCount <= 12) {
           if (!cards.includes(cur)) cards.push(cur);
           break;
         }
@@ -442,16 +470,16 @@
 
       const textInputs = [...optCard.querySelectorAll('input[type="text"], input:not([type])')];
       const colorInp = textInputs.find(i =>
-        /블랙|색상/.test(i.placeholder || "") ||
-        /색상명/.test((i.parentElement?.innerText || i.closest("div")?.parentElement?.innerText || ""))
+        /블랙/.test(i.placeholder || "") ||
+        /색상명\s*\(필수\)/.test(((i.closest("div")?.parentElement?.innerText) || ""))
       ) || textInputs[0];
 
       if (colorInp) setNativeInputValue(colorInp, g.color);
 
       const codeInp = textInputs.find(i =>
         i !== colorInp &&
-        (/품번|색상별/.test(i.placeholder || "") || /옵션\s*품번/.test((i.parentElement?.innerText || i.closest("div")?.parentElement?.innerText || "")))
-      ) || textInputs[1];
+        (/품번|색상별/.test(i.placeholder || "") || /옵션\s*품번/.test(((i.closest("div")?.parentElement?.innerText) || "")))
+      );
 
       if (codeInp && g.code) setNativeInputValue(codeInp, g.code);
 
@@ -465,7 +493,8 @@
         const file = await urlToFile(matched.url, `${g.color}_${matched.key || slotRole}.jpg`);
         if (file) {
           setFileInputFiles(fInp, file);
-          const noFileNode = [...(fInp.closest("div")?.parentElement?.querySelectorAll("span, small, p, div") || [])].find(
+          const slotWrap = fInp.closest("div")?.parentElement || fInp.parentElement;
+          const noFileNode = [...(slotWrap?.querySelectorAll("span, small, p, div") || [])].find(
             n => n.children.length === 0 && /선택된\s*파일\s*없음/.test((n.textContent || "").trim())
           );
           if (noFileNode) noFileNode.textContent = file.name;
