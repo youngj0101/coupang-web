@@ -64,6 +64,7 @@
   let authState = loadAuth();
   let latestMeasuredSizes = null;
   let latestMaterialText = "";
+  let initialScrollLocked = false;
 
   function loadAuth() {
     try { return JSON.parse(localStorage.getItem(AUTH_STORAGE_KEY)) || null; }
@@ -112,6 +113,32 @@
       .map(s => s.trim())
       .filter(Boolean)
       .slice(0, 20);
+  }
+
+  function buildSeoTagsFromFields({ name, lfName, code, material, options }) {
+    const baseText = `${name || ""} ${lfName || ""} ${material || ""} ${(options || []).map(o => `${o.color || ""} ${o.size || ""}`).join(" ")}`;
+    const items = baseText.match(/(숏패딩|롱패딩|패딩|점퍼|자켓|재킷|코트|가디건|니트|스웨터|맨투맨|후드|셔츠|티셔츠|팬츠|바지|슬랙스|데님|카라)/g) || [];
+    const fabrics = (material || "").match(/(캐시미어|울|모|메리노|면|코튼|린넨|폴리에스터|나일론|레이온|아크릴|실크|구스|덕다운)/g) || [];
+    const colors = [...new Set((options || []).map(o => o.color).filter(Boolean))];
+    const words = baseText
+      .replace(/[^가-힣A-Za-z0-9%\s]/g, " ")
+      .split(/\s+/)
+      .map(w => w.trim())
+      .filter(w => w.length >= 2);
+
+    const list = [
+      ...items.map(i => `남성${i.replace(/^남성/, "")}`),
+      ...items,
+      ...fabrics.flatMap(f => items.slice(0, 2).map(i => `${f}${i}`)),
+      ...fabrics,
+      ...colors,
+      ...words,
+      code
+    ]
+      .map(x => String(x || "").replace(/\s+/g, "").trim())
+      .filter(x => x && x.length >= 2 && x.length <= 20);
+
+    return [...new Set(list)].slice(0, 20);
   }
 
   function buildCategoryPath(mainCat, subCat) {
@@ -170,6 +197,7 @@
     if (!input || val === undefined || val === null) return;
     const str = String(val).trim();
     if (!str) return;
+    if (input.value === str) return;
     const proto = input.tagName === "TEXTAREA" ? window.HTMLTextAreaElement.prototype : window.HTMLInputElement.prototype;
     const setter = Object.getOwnPropertyDescriptor(proto, "value")?.set;
     if (setter) setter.call(input, str);
@@ -178,8 +206,20 @@
     input.dispatchEvent(new Event("change", { bubbles: true }));
   }
 
+  function scrollPageToTop() {
+    if ("scrollRestoration" in history) {
+      history.scrollRestoration = "manual";
+    }
+    window.scrollTo(0, 0);
+    document.documentElement.scrollTop = 0;
+    document.body.scrollTop = 0;
+  }
+
   function cleanUnwantedUI() {
-    // 1) 기존 남성/숏패딩 선택 박스(#lfGender, #lfSizeKind, #lfFillSize) 숨김
+    if (/다중\s*색상\s*상품\s*제작실/.test(document.title)) {
+      document.title = document.title.replace(/다중\s*색상\s*상품\s*제작실/g, "쿠팡 자동화");
+    }
+
     ["#lfGender", "#lfSizeKind", "#lfFillSize"].forEach(sel => {
       const el = document.querySelector(sel);
       if (el) {
@@ -189,12 +229,15 @@
       }
     });
 
-    // 2) 사이즈표 제목 변경 및 불필요 선택란/안내문 숨김
-    document.querySelectorAll("div, footer, nav, section, aside, label, h1, h2, h3, h4, p, b, strong, small, button, select").forEach(el => {
+    document.querySelectorAll("div, footer, nav, section, aside, label, h1, h2, h3, h4, p, b, strong, small, span, button, select").forEach(el => {
       if (el.id?.startsWith("cp") || el.closest("#cpTopBar, #cpSidebar, #cpEditModal, #cpLoginOverlay, #cpStudioRegSection")) return;
       if (el.querySelector("#lfReceived, #btnMakeAll, .cp-card")) return;
 
       const txt = (el.innerText || el.textContent || "").replace(/\s+/g, " ").trim();
+      if (el.children.length <= 2 && /다중\s*색상\s*상품\s*제작실/.test(txt)) {
+        el.textContent = txt.replace(/다중\s*색상\s*상품\s*제작실/g, "쿠팡 자동화");
+      }
+
       if (txt === "상세페이지 제작" && el.children.length <= 2) {
         el.style.setProperty("display", "none", "important");
       }
@@ -238,7 +281,6 @@
   }
 
   function applyMeasuredSizesToStudio(measuredSizes) {
-    cleanUnwantedUI();
     if (measuredSizes?.rows?.length) latestMeasuredSizes = measuredSizes;
     const data = measuredSizes?.rows?.length ? measuredSizes : latestMeasuredSizes;
     if (!data?.rows?.length) return;
@@ -309,11 +351,47 @@
     }
   }
 
-  // 제작실 내부가 늦게 렌더되는 경우에도 실측 사이즈·소재가 빠지지 않게 보완
+  function readGeneratedStudioAssets() {
+    let thumbUrl = "";
+    let detailImgUrl = "";
+
+    // 1) 제작실 화면에 렌더링된 캔버스나 생성 이미지 탐색
+    const canvases = [...document.querySelectorAll("canvas")].filter(c => c.width > 100 && c.height > 100);
+    if (canvases.length) {
+      try { thumbUrl = canvases[0].toDataURL("image/jpeg", 0.85); } catch {}
+      if (canvases.length > 1) {
+        try { detailImgUrl = canvases[canvases.length - 1].toDataURL("image/jpeg", 0.85); } catch {}
+      }
+    }
+
+    const studioImgs = [...document.querySelectorAll("main img")].filter(img => {
+      if (img.closest("#cpStudioRegSection")) return false;
+      const src = img.currentSrc || img.src || "";
+      return src.startsWith("data:image") || src.startsWith("blob:") || /result|preview|detail|thumb|make/i.test(src);
+    });
+
+    if (!thumbUrl && studioImgs[0]) {
+      thumbUrl = studioImgs[0].currentSrc || studioImgs[0].src || "";
+    }
+    if (!detailImgUrl && studioImgs.length > 1) {
+      detailImgUrl = studioImgs[studioImgs.length - 1].currentSrc || studioImgs[studioImgs.length - 1].src || "";
+    }
+
+    return { thumbUrl, detailImgUrl };
+  }
+
+  let observerTimer = null;
   const studioObserver = new MutationObserver(() => {
-    cleanUnwantedUI();
-    if (latestMeasuredSizes?.rows?.length) applyMeasuredSizesToStudio(latestMeasuredSizes);
-    if (latestMaterialText) applyFabricMaterialToStudio(latestMaterialText);
+    clearTimeout(observerTimer);
+    observerTimer = setTimeout(() => {
+      cleanUnwantedUI();
+      if (latestMeasuredSizes?.rows?.length) applyMeasuredSizesToStudio(latestMeasuredSizes);
+      if (latestMaterialText) applyFabricMaterialToStudio(latestMaterialText);
+      if (!initialScrollLocked) {
+        scrollPageToTop();
+        initialScrollLocked = true;
+      }
+    }, 150);
   });
   studioObserver.observe(document.documentElement, { childList: true, subtree: true });
 
@@ -555,7 +633,7 @@
   topBar.innerHTML = `
     <div class="cp-brand-wrap">
       <span class="cp-brand-logo">쿠팡 자동화</span>
-      <span class="cp-brand-title" id="cpCurrentTitle">상세페이지·썸네일 제작실</span>
+      <span class="cp-brand-title" id="cpCurrentTitle">쿠팡 자동화</span>
     </div>
     <div class="cp-top-right">
       <button type="button" id="btnQuickSave" class="cp-sync-btn">☁️ 제작실 상품 바로 저장</button>
@@ -569,7 +647,7 @@
   sidebar.id = "cpSidebar";
   sidebar.innerHTML = `
     <div class="cp-menu-group">1) 제작 도구</div>
-    <button type="button" class="cp-menu-item active" data-view="studio">└ 상세페이지·썸네일 제작실</button>
+    <button type="button" class="cp-menu-item active" data-view="studio">└ 쿠팡 자동화</button>
 
     <div class="cp-menu-group">2) 상품 관리</div>
     <button type="button" class="cp-menu-item" data-view="list">└ 상품 리스트</button>
@@ -789,7 +867,10 @@
   document.body.appendChild(loginOverlay);
 
   cleanUnwantedUI();
-  setTimeout(cleanUnwantedUI, 600);
+  setTimeout(() => {
+    cleanUnwantedUI();
+    scrollPageToTop();
+  }, 300);
 
   document.addEventListener("input", e => {
     if (e.target.classList.contains("cp-money-input")) {
@@ -970,6 +1051,7 @@
     const kind = document.querySelector('input[placeholder="긴팔 카라 니트"]')?.value.trim() || "";
     const studioCopy = document.getElementById("copy")?.value.trim() || "";
     const firstImg = document.querySelector("#lfReceived img")?.src || "";
+    const generatedAssets = readGeneratedStudioAssets();
 
     const storageData = (typeof chrome !== "undefined" && chrome.storage)
       ? await new Promise(r => chrome.storage.local.get("lfMakerData", o => r(o.lfMakerData || {})))
@@ -991,16 +1073,28 @@
       asInfo: "상세페이지 참고"
     };
 
+    const autoTags = Array.isArray(storageData.seoTags) && storageData.seoTags.length
+      ? storageData.seoTags
+      : buildSeoTagsFromFields({
+          name: defaultName,
+          lfName: storageData.lfName || storageData.title || "",
+          code: collectedOptions[0]?.code || code,
+          material: mergedNotice.material || "",
+          options: collectedOptions
+        });
+
     return {
       brand,
       code,
       defaultName,
       lfName: storageData.lfName || storageData.title || "",
       sourceUrl: storageData.url || "",
-      thumbUrl: storageData.thumbUrl || firstImg,
+      thumbUrl: generatedAssets.thumbUrl || storageData.thumbUrl || firstImg,
+      detailImgUrl: generatedAssets.detailImgUrl || "",
       discountPrice: Number(storageData.discountPrice) || 0,
       regularPrice: Number(storageData.regularPrice) || 0,
       options: collectedOptions,
+      seoTags: autoTags,
       measuredSizes: storageData.measuredSizes || null,
       notice: mergedNotice,
       studioCopy
@@ -1024,6 +1118,13 @@
     }
     if (d.thumbUrl && (overwrite || !document.getElementById("sThumbUrl").value)) {
       document.getElementById("sThumbUrl").value = d.thumbUrl;
+    }
+    if (d.detailImgUrl && (overwrite || !document.getElementById("sDetailImgUrl").value)) {
+      document.getElementById("sDetailImgUrl").value = d.detailImgUrl;
+    }
+    if (d.seoTags?.length && (overwrite || !document.getElementById("sTags").value)) {
+      document.getElementById("sTags").value = d.seoTags.join(", ");
+      updateStudioTags();
     }
     if (d.discountPrice && (overwrite || !parseNum(document.getElementById("sDiscountPrice").value))) {
       document.getElementById("sDiscountPrice").value = formatComma(d.discountPrice);
@@ -1049,7 +1150,7 @@
       applyFabricMaterialToStudio(d.notice.material);
     }
     studioMarginCtrl.update();
-    if (showToast) alert("📥 확장프로그램 수집값(옵션·고시정보·가격·실측사이즈·소재·상품명·이미지)을 반영했습니다!");
+    if (showToast) alert("📥 확장프로그램 수집값(옵션·고시정보·가격·실측사이즈·소재·SEO태그·상품명·이미지)을 반영했습니다!");
   }
 
   document.getElementById("btnSyncFromStudio").addEventListener("click", () => syncFromStudioPanel(true, true));
@@ -1079,6 +1180,7 @@
       loginOverlay.hidden = true;
       document.getElementById("cpUserEmail").textContent = `👤 ${authState.email}`;
       syncFromStudioPanel(false, false);
+      scrollPageToTop();
     } else {
       loginOverlay.hidden = false;
       document.getElementById("cpUserEmail").textContent = "";
@@ -1175,7 +1277,7 @@
   const menuButtons = sidebar.querySelectorAll(".cp-menu-item");
   const titleEl = document.getElementById("cpCurrentTitle");
   const titles = {
-    studio: "상세페이지·썸네일 제작실",
+    studio: "쿠팡 자동화",
     list: "상품 리스트"
   };
 
@@ -1189,6 +1291,7 @@
     if (isStudio) {
       syncFromStudioPanel(false, false);
       cleanUnwantedUI();
+      scrollPageToTop();
     } else {
       fetchProducts();
     }
@@ -1571,6 +1674,10 @@
     const panelCopy = document.getElementById("sCopy").value.trim();
     const finalCopy = panelCopy || ext.studioCopy;
 
+    const thumbVal = document.getElementById("sThumbUrl").value.trim() || ext.thumbUrl;
+    const detailVal = document.getElementById("sDetailImgUrl").value.trim() || ext.detailImgUrl || thumbVal;
+    const rawTagsVal = document.getElementById("sTags").value.trim() || (ext.seoTags || []).join(", ");
+
     try {
       await saveToFirebase({
         uploadDate: document.getElementById("sUploadDate").value || formatDate(),
@@ -1581,17 +1688,17 @@
         code: finalOptions[0]?.code || ext.code,
         options: finalOptions,
         notice: finalNotice,
-        tags: document.getElementById("sTags").value,
+        tags: rawTagsVal,
         sourceUrl: document.getElementById("sSourceUrl").value.trim() || ext.sourceUrl,
-        thumbUrl: document.getElementById("sThumbUrl").value.trim() || ext.thumbUrl,
-        detailImgUrl: document.getElementById("sDetailImgUrl").value.trim(),
+        thumbUrl: thumbVal,
+        detailImgUrl: detailVal,
         discountPrice: costVal,
         price: saleVal,
         regularPrice: parseNum(document.getElementById("sRegularPrice").value) || ext.regularPrice,
         status: document.getElementById("sStatus").value || "상세페이지 제작중",
         copy: finalCopy
       });
-      alert(`✅ [${fullName}] 상품이 저장되었습니다!\n(옵션 ${finalOptions.length}개 · 20% 마진 판매가 반영)`);
+      alert(`✅ [${fullName}] 상품(썸네일·상세페이지·SEO태그 포함)이 저장되었습니다!`);
       if (!listView.hidden) fetchProducts();
     } catch (e) {
       alert("저장 중 오류: " + e.message);
