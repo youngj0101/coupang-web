@@ -11,7 +11,7 @@
   const AUTH_URL = `https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=${API_KEY}`;
   const REFRESH_URL = `https://securetoken.googleapis.com/v1/token?key=${API_KEY}`;
   const AUTH_STORAGE_KEY = "cp_team_auth_v1";
-  const COLLECT_ARCHIVE_KEY = "cp_collected_archive_v2";
+  const COLLECT_ARCHIVE_KEY = "cp_collected_archive_v3";
 
   const DEFAULT_FEE_RATE = 11.55;
   const DEFAULT_SHIPPING = 0;
@@ -66,11 +66,12 @@
   const WORKFLOW_STEPS = [
     { step: 1, title: "상품 수집", sub: "LF몰 후보 상품 수집·보관", view: "collect" },
     { step: 2, title: "상품 제작", sub: "상세페이지·옵션·사이즈표 제작", view: "studio" },
-    { step: 3, title: "재고 관리", sub: "판매 상태·재고·변동 이력", view: "list" }
+    { step: 3, title: "재고 관리", sub: "색상·사이즈별 재고·상태 관리", view: "list" }
   ];
 
   let products = [];
   let collectedArchive = loadCollectedArchive();
+  let expandedProductIds = new Set();
   let editingId = null;
   let authState = loadAuth();
   let bridgeMakerData = null;
@@ -305,7 +306,7 @@
   }
 
   // =========================================================================
-  // 3) 기존 제작실 안전 연동 (STUDIO SAFE BRIDGE)
+  // 3) 기존 제작실 연동 (STUDIO BRIDGE)
   // =========================================================================
   function getSizeRowsAndAddBtn() {
     const addBtn = [...document.querySelectorAll("button")].find(b =>
@@ -463,7 +464,6 @@
     }
   }
 
-  // 0. LF몰에서 받은 이미지: 가로 flex/grid 배치 보장
   function renderLfReceivedHorizontal(makerData) {
     const lfRec = document.getElementById("lfReceived");
     if (!lfRec) return;
@@ -629,7 +629,6 @@
       cursor: pointer; font-size: 13px !important; margin: 0 !important;
     }
 
-    /* 0. LF몰에서 받은 이미지 가로 정렬 보장 */
     #lfReceived, #lfReceived.cp-lf-rec-horizontal {
       display: flex !important;
       flex-direction: row !important;
@@ -655,13 +654,8 @@
       border-radius: 5px !important;
     }
     .cp-lf-rec-cap {
-      font-size: 11px;
-      font-weight: 700;
-      color: #334155;
-      margin-top: 5px;
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
+      font-size: 11px; font-weight: 700; color: #334155;
+      margin-top: 5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
     }
 
     #cpLayout { display: flex; min-height: 100vh; padding-top: 56px; }
@@ -832,6 +826,7 @@
     @media (max-width: 760px) { .cp-notice-grid { grid-template-columns: 1fr; } }
     .cp-tag-count { font-size: 11.5px; font-weight: 700; color: #0f3d2e; margin-left: 6px; }
     .cp-tag-count.over { color: #dc2626; }
+
     .cp-table-wrap { width: 100%; overflow-x: auto; }
     .cp-table { width: 100%; border-collapse: collapse; font-size: 13px; min-width: 1180px; }
     .cp-table th, .cp-table td { padding: 11px 8px; border-bottom: 1px solid #e5e7eb; text-align: left; vertical-align: middle; }
@@ -839,11 +834,44 @@
     .cp-num-col { text-align: center !important; color: #64748b; font-weight: 700; }
     .cp-price-col { text-align: right !important; white-space: nowrap; font-variant-numeric: tabular-nums; }
     .cp-thumb-mini { width: 44px; height: 56px; object-fit: cover; border-radius: 5px; border: 1px solid #cbd5e1; background: #f8fafc; display: block; }
-    .cp-stock-input { width: 62px !important; padding: 5px 6px !important; text-align: center; font-size: 12.5px !important; font-weight: 700; border: 1px solid #cbd5e1 !important; border-radius: 6px !important; }
+    .cp-expand-btn {
+      background: #f1f5f9 !important; color: #0f172a !important; border: 1px solid #cbd5e1 !important;
+      padding: 6px 10px !important; border-radius: 7px !important; font-size: 12px !important;
+      font-weight: 700 !important; cursor: pointer; margin: 0 !important; white-space: nowrap;
+    }
+    .cp-expand-btn:hover { background: #e2e8f0 !important; }
+    .cp-detail-row td { background: #f8fafc !important; padding: 14px 18px !important; }
+    .cp-matrix-box {
+      background: #ffffff; border: 1px solid #cbd5e1; border-radius: 10px; padding: 14px 16px;
+    }
+    .cp-matrix-head {
+      display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap;
+      margin-bottom: 10px;
+    }
+    .cp-matrix-color-row {
+      display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+      padding: 8px 10px; border-top: 1px solid #f1f5f9;
+    }
+    .cp-matrix-color-lbl { min-width: 96px; font-weight: 800; color: #0f172a; font-size: 12.5px; }
+    .cp-size-chip-box {
+      display: inline-flex; align-items: center; gap: 5px;
+      background: #f8fafc; border: 1px solid #cbd5e1; border-radius: 7px; padding: 4px 8px;
+      font-size: 12px; font-weight: 700;
+    }
+    .cp-size-stock-inp {
+      width: 50px !important; padding: 3px 5px !important; text-align: center;
+      font-size: 12px !important; font-weight: 700; border: 1px solid #94a3b8 !important;
+      border-radius: 5px !important;
+    }
+    .cp-soldout-tag {
+      background: #fee2e2; color: #dc2626; font-size: 10.5px; font-weight: 800;
+      padding: 2px 6px; border-radius: 5px;
+    }
+
     .cp-lf-sub { font-size: 11.5px; color: #64748b; margin-top: 2px; }
     .cp-link-btn { display: inline-block; background: #eff6ff; color: #1d4ed8; padding: 4px 9px; border-radius: 6px; font-size: 12px; font-weight: 600; text-decoration: none; white-space: nowrap; }
-    .cp-worker-tag { font-size: 11px; color: #94a3b8; margin-top: 3px; }
-    .cp-row-status { width: 100%; min-width: 120px; font-size: 12px !important; padding: 6px !important; }
+    .cp-worker-tag { font-size: 11px; color: #94a3b8; margin-top: 3px; white-space: pre-line; }
+    .cp-row-status { width: 100%; min-width: 118px; font-size: 12px !important; padding: 6px !important; }
     .cp-action-wrap { display: flex; gap: 5px; white-space: nowrap; }
     .cp-edit-btn { background: #2563eb !important; color: #fff !important; padding: 6px 10px !important; font-size: 12px !important; border-radius: 6px !important; margin: 0 !important; }
     .cp-del-btn { background: #ef4444 !important; color: #fff !important; padding: 6px 10px !important; font-size: 12px !important; border-radius: 6px !important; margin: 0 !important; }
@@ -884,7 +912,6 @@
   const layout = document.createElement("div");
   layout.id = "cpLayout";
 
-  // 바로가기에서 '상품 제작실' 제거하고 '상품 리스트'만 유지
   const sidebar = document.createElement("aside");
   sidebar.id = "cpSidebar";
   sidebar.innerHTML = `
@@ -949,10 +976,10 @@
               <th style="width:44px;text-align:center;">순번</th>
               <th style="width:90px;">업로드 날짜</th>
               <th style="width:56px;">썸네일</th>
-              <th style="min-width:210px;">상품명 (쿠팡 / LF몰)</th>
+              <th style="min-width:210px;">상품명 (쿠팡 / LF몰 / 이력)</th>
               <th style="width:70px;">상품링크</th>
               <th style="width:120px;">품번</th>
-              <th style="width:70px;text-align:center;">재고</th>
+              <th style="width:120px;text-align:center;">색상·사이즈 재고</th>
               <th style="width:94px;text-align:right;">최대혜택가(소싱)</th>
               <th style="width:100px;text-align:right;">쿠팡 판매가</th>
               <th style="width:90px;text-align:right;">정가</th>
@@ -1110,7 +1137,7 @@
   document.body.appendChild(loginOverlay);
 
   // =========================================================================
-  // 5) 1. 상품 수집 전용 뷰 (별도 보관소 관리)
+  // 5) 1. 상품 수집 뷰 & 3. 재고 관리 색상×사이즈 펼치기 (VIEWS)
   // =========================================================================
   function renderCollectView() {
     if (currentView !== "collect") {
@@ -1130,10 +1157,11 @@
       </div>
 
       <div class="cp-url-box">
-        <div style="font-size:13px;font-weight:700;color:#0f172a;margin-bottom:6px;">🔗 LF몰 URL 단건 / 일괄 등록 (줄바꿈으로 여러 URL 입력 가능)</div>
-        <textarea id="cpBulkUrlsInput" rows="2" placeholder="https://www.lfmall.co.kr/app/product/DMJU5D041N2&#10;https://www.lfmall.co.kr/app/product/..."></textarea>
+        <div style="font-size:13px;font-weight:700;color:#0f172a;margin-bottom:6px;">🔗 LF몰 URL 단건 / 일괄 입력 (줄바꿈으로 여러 URL 입력 가능)</div>
+        <textarea id="cpBulkUrlsInput" rows="2" placeholder="https://www.lfmall.co.kr/app/product/DMJU5D041N2
+https://www.lfmall.co.kr/app/product/..."></textarea>
         <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:8px;">
-          <button type="button" class="cp-primary-btn" id="btnAddUrlsToCollect">+ URL 후보 추가 및 중복 확인</button>
+          <button type="button" class="cp-primary-btn" id="btnAddUrlsToCollect">+ URL 추가 및 중복 확인</button>
         </div>
       </div>
 
@@ -1154,8 +1182,9 @@
                   ${mainThumb ? `<img src="${mainThumb}" class="cp-collect-thumb" alt="수집 썸네일">` : `<div class="cp-collect-thumb"></div>`}
                   <div class="cp-collect-meta">
                     <div class="cp-collect-name">${item.title || item.lfName || "수집 상품"}</div>
-                    <div class="cp-collect-sub">품번: ${item.code || "-"} · 색상: ${colorsTxt}</div>
-                    <div class="cp-collect-sub">사이즈: ${sizesTxt} · 재고합계: ${stockSum}개</div>
+                    <div class="cp-collect-sub">브랜드: ${item.brand || "-"} · 품번: ${item.code || "-"}</div>
+                    <div class="cp-collect-sub">색상: ${colorsTxt} · 사이즈: ${sizesTxt}</div>
+                    <div class="cp-collect-sub">재고합계: ${stockSum}개 · 사진: ${(item.items || []).length}장</div>
                     <div class="cp-collect-price">최대혜택가 ${formatWon(item.discountPrice)} / 정가 ${formatWon(item.regularPrice)}</div>
                   </div>
                 </div>
@@ -1165,7 +1194,7 @@
                   </div>
                 ` : ""}
                 <div class="cp-collect-actions">
-                  ${item.url ? `<a href="${item.url}" target="_blank" class="cp-link-btn">LF몰 열기 ↗</a>` : ""}
+                  ${item.url ? `<a href="${item.url}" target="_blank" class="cp-link-btn">LF몰 링크 ↗</a>` : ""}
                   <button type="button" class="cp-del-btn" data-del-idx="${idx}">삭제</button>
                   <button type="button" class="cp-load-btn" data-idx="${idx}">2. 상품 제작으로 보내기 →</button>
                 </div>
@@ -1209,8 +1238,7 @@
     collectView.querySelectorAll("[data-del-idx]").forEach(btnEl => {
       btnEl.addEventListener("click", () => {
         const idx = Number(btnEl.dataset.delIdx);
-        const next = collectedArchive.filter((_, i) => i !== idx);
-        saveCollectedArchive(next);
+        saveCollectedArchive(collectedArchive.filter((_, i) => i !== idx));
         renderCollectView();
       });
     });
@@ -1282,7 +1310,7 @@
   }
 
   // =========================================================================
-  // 6) 폼 바인딩 & 데이터 동기화 (FORMS & FIREBASE SYNC)
+  // 6) 폼 바인딩 & FIREBASE CRUD (FORMS & INVENTORY)
   // =========================================================================
   function getNoticeFromForm(p) {
     const obj = {};
@@ -1492,7 +1520,7 @@
     if (d.notice?.material) applyFabricMaterialToStudio(d.notice.material);
     if (Array.isArray(d.items) && d.items.length) await applyCollectedPhotosToStudio(d);
 
-    if (showToast) alert("📥 1. 상품 수집 데이터를 제작 폼에 반영했습니다!");
+    if (showToast) alert("📥 1. 상품 수집값을 2. 상품 제작 폼에 반영했습니다!");
   }
 
   document.getElementById("btnSyncFromStudio").addEventListener("click", () => syncFromStudioPanel(true, true));
@@ -1703,6 +1731,8 @@
     const firstCode = item.code || (item.options?.[0]?.code || "");
     const safeOpts = (item.options || []).map(o => ({ ...o, stock: clampStock(o.stock ?? MAX_STOCK) }));
     const mergedNotice = { ...(item.notice || {}), asInfo: item.notice?.asInfo || "상세페이지 참고" };
+    const logLine = `[${formatDateTime()}] ${user}: 상품 제작 완료 및 등록`;
+    const copyWithLog = item.copy ? `${item.copy}\n${logLine}` : logLine;
 
     const payload = {
       fields: {
@@ -1722,9 +1752,9 @@
         price: { integerValue: String(Math.round(item.price || 0)) },
         regularPrice: { integerValue: String(Math.round(item.regularPrice || 0)) },
         status: { stringValue: item.status || "판매 중" },
-        copy: { stringValue: item.copy || "" },
+        copy: { stringValue: copyWithLog },
         author: { stringValue: user },
-        updatedBy: { stringValue: user },
+        updatedBy: { stringValue: `${user} (${formatDateTime()})` },
         createdAt: { integerValue: String(Date.now()) }
       }
     };
@@ -1766,7 +1796,7 @@
         regularPrice: { integerValue: String(Math.round(item.regularPrice || 0)) },
         status: { stringValue: item.status },
         copy: { stringValue: item.copy || "" },
-        updatedBy: { stringValue: getUserName() }
+        updatedBy: { stringValue: `${getUserName()} (${formatDateTime()})` }
       }
     };
     const res = await authFetch(`${BASE_URL}/${id}?${masks}&key=${API_KEY}`, {
@@ -1777,24 +1807,28 @@
     if (!res.ok) throw new Error("수정 실패");
   }
 
-  async function updateStockOnly(p, newTotalStock) {
-    const safeTotal = clampStock(newTotalStock);
-    const opts = Array.isArray(p.options) && p.options.length
-      ? p.options.map((o, i) => ({ ...o, stock: i === 0 ? safeTotal : 0 }))
-      : [{ color: "", code: p.code || "", size: "", stock: safeTotal }];
-    p.options = opts;
-    const logLine = `[${formatDateTime()}] ${getUserName()}: 재고 ${safeTotal}개로 변경`;
+  async function saveMatrixStocks(p, updatedOptions, noteText = "") {
+    const safeOpts = updatedOptions.map(o => ({ ...o, stock: clampStock(o.stock ?? MAX_STOCK) }));
+    p.options = safeOpts;
+    const totalNow = getTotalStock(p);
+    const nextStatus = totalNow === 0 ? "품절" : (p.status === "품절" ? "판매 중" : p.status);
+    p.status = nextStatus;
+
+    const parts = [`재고 총 ${totalNow}개`];
+    if (noteText) parts.push(`변동: ${noteText}`);
+    const logLine = `[${formatDateTime()}] ${getUserName()}: ${parts.join(" · ")}`;
     const nextCopy = p.copy ? `${p.copy}\n${logLine}` : logLine;
     p.copy = nextCopy;
 
-    await authFetch(`${BASE_URL}/${p.id}?updateMask.fieldPaths=optionsJson&updateMask.fieldPaths=copy&updateMask.fieldPaths=updatedBy&key=${API_KEY}`, {
+    await authFetch(`${BASE_URL}/${p.id}?updateMask.fieldPaths=optionsJson&updateMask.fieldPaths=status&updateMask.fieldPaths=copy&updateMask.fieldPaths=updatedBy&key=${API_KEY}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         fields: {
-          optionsJson: { stringValue: JSON.stringify(opts) },
+          optionsJson: { stringValue: JSON.stringify(safeOpts) },
+          status: { stringValue: nextStatus },
           copy: { stringValue: nextCopy },
-          updatedBy: { stringValue: getUserName() }
+          updatedBy: { stringValue: `${getUserName()} (${formatDateTime()})` }
         }
       })
     });
@@ -1811,7 +1845,7 @@
         fields: {
           status: { stringValue: newStatus },
           copy: { stringValue: nextCopy },
-          updatedBy: { stringValue: getUserName() }
+          updatedBy: { stringValue: `${getUserName()} (${formatDateTime()})` }
         }
       })
     });
@@ -1988,7 +2022,6 @@
   });
 
   async function saveFromStudioCombined() {
-    await triggerMakeAllAndCaptureAssets();
     const ext = await readStudioAndExtensionData();
     const panelName = sanitizeProductTitle(document.getElementById("sName").value);
     const fullName = panelName || ext.defaultName;
@@ -2031,7 +2064,7 @@
         status: document.getElementById("sStatus").value || "판매 중",
         copy: document.getElementById("sCopy").value.trim() || ext.studioCopy
       });
-      alert(`✅ [${fullName}] 상품이 3. 재고 관리(상품 리스트)에 저장되었습니다!`);
+      alert(`✅ [${fullName}] 상품이 3. 재고 관리에 저장되었습니다!`);
       if (currentView === "list") fetchProducts();
     } catch (e) {
       alert("저장 중 오류: " + e.message);
@@ -2058,14 +2091,22 @@
 
     filtered.forEach((p, idx) => {
       const tr = document.createElement("tr");
+      const opts = Array.isArray(p.options) && p.options.length
+        ? p.options
+        : [{ color: "기본", code: p.code || "", size: "FREE", stock: MAX_STOCK }];
+
+      const colorNames = [...new Set(opts.map(o => o.color || "기본"))];
+      const totalStock = opts.reduce((s, o) => s + clampStock(o.stock ?? MAX_STOCK), 0);
+      const isExpanded = expandedProductIds.has(p.id);
+
       const workerInfo = [
         p.author ? `등록: ${p.author}` : "",
-        p.updatedBy ? `마지막 확인: ${p.updatedBy}` : ""
-      ].filter(Boolean).join(" · ");
+        p.updatedBy ? `마지막 확인: ${p.updatedBy}` : "",
+        p.copy ? `이력: ${p.copy.split("\n").slice(-2).join(" / ")}` : ""
+      ].filter(Boolean).join("\n");
 
-      const uniqueCodes = [...new Set((p.options || []).map(o => o.code).filter(Boolean))];
+      const uniqueCodes = [...new Set(opts.map(o => o.code).filter(Boolean))];
       const displayCode = uniqueCodes.length ? uniqueCodes.join(", ") : (p.code || "-");
-      const totalStock = getTotalStock(p);
       const thumbSrc = p.thumbUrl || p.detailImgUrl || "";
 
       tr.innerHTML = `
@@ -2086,7 +2127,8 @@
         </td>
         <td style="font-family:monospace;font-size:12px;color:#334155;word-break:break-all;">${displayCode}</td>
         <td style="text-align:center;">
-          <input type="number" class="cp-stock-input" min="0" max="${MAX_STOCK}" value="${totalStock}">
+          <div style="font-size:11.5px;font-weight:700;color:#334155;margin-bottom:4px;">색상 ${colorNames.length}종 · ${totalStock}개</div>
+          <button type="button" class="cp-expand-btn">${isExpanded ? "접기 ▲" : "펼치기 ▼"}</button>
         </td>
         <td class="cp-price-col">${formatWon(p.discountPrice)}</td>
         <td class="cp-price-col" style="font-weight:700;color:#0f3d2e;">${formatWon(p.price)}</td>
@@ -2106,15 +2148,78 @@
           </div>
         </td>
       `;
-      tr.querySelector(".cp-stock-input").addEventListener("change", e => {
-        const clamped = clampStock(e.target.value);
-        e.target.value = clamped;
-        updateStockOnly(p, clamped);
+
+      tr.querySelector(".cp-expand-btn").addEventListener("click", () => {
+        if (expandedProductIds.has(p.id)) expandedProductIds.delete(p.id);
+        else expandedProductIds.add(p.id);
+        renderList();
       });
       tr.querySelector(".cp-row-status").addEventListener("change", e => updateStatusOnly(p, e.target.value));
       tr.querySelector(".cp-edit-btn").addEventListener("click", () => openEditModal(p));
       tr.querySelector(".cp-del-btn").addEventListener("click", () => deleteProduct(p.id));
       tbody.appendChild(tr);
+
+      if (isExpanded) {
+        const detailTr = document.createElement("tr");
+        detailTr.className = "cp-detail-row";
+
+        const colorRowsHtml = colorNames.map(cName => {
+          const cOpts = opts.filter(o => (o.color || "기본") === cName);
+          const chipsHtml = cOpts.map(o => {
+            const stVal = clampStock(o.stock ?? MAX_STOCK);
+            const szLbl = o.size || "옵션";
+            return `
+              <span class="cp-size-chip-box">
+                <span>${szLbl}</span>
+                <input type="number" class="cp-size-stock-inp" min="0" max="${MAX_STOCK}" data-c="${cName}" data-s="${o.size || ""}" value="${stVal}">
+                <span>개</span>
+                ${stVal === 0 ? `<span class="cp-soldout-tag">품절</span>` : ""}
+              </span>
+            `;
+          }).join("");
+
+          return `
+            <div class="cp-matrix-color-row">
+              <span class="cp-matrix-color-lbl">${cName}</span>
+              <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;">${chipsHtml}</div>
+            </div>
+          `;
+        }).join("");
+
+        detailTr.innerHTML = `
+          <td colspan="12">
+            <div class="cp-matrix-box">
+              <div class="cp-matrix-head">
+                <strong style="font-size:13px;color:#0f172a;">옵션별 상세 재고 (색상 × 사이즈 · 최대 ${MAX_STOCK}개)</strong>
+                <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+                  <input type="text" class="cp-change-note-inp" placeholder="LF몰 재고/가격 변동 사유 (선택)" style="width:220px;padding:6px 8px;border:1px solid #cbd5e1;border-radius:6px;font-size:12px;">
+                  <button type="button" class="cp-primary-btn cp-save-matrix-btn" style="padding:7px 14px !important;font-size:12px !important;">색상·사이즈 재고 저장</button>
+                </div>
+              </div>
+              ${colorRowsHtml}
+            </div>
+          </td>
+        `;
+
+        detailTr.querySelector(".cp-save-matrix-btn").addEventListener("click", async () => {
+          const inpList = [...detailTr.querySelectorAll(".cp-size-stock-inp")];
+          const nextOpts = opts.map((o, i) => {
+            const matchedInp = inpList[i];
+            const val = matchedInp ? clampStock(matchedInp.value) : clampStock(o.stock ?? MAX_STOCK);
+            return { ...o, stock: val };
+          });
+          const noteVal = detailTr.querySelector(".cp-change-note-inp")?.value.trim() || "";
+          try {
+            await saveMatrixStocks(p, nextOpts, noteVal);
+            alert("✅ 색상·사이즈별 재고가 저장되었습니다!");
+            renderList();
+          } catch (err) {
+            alert("재고 저장 오류: " + err.message);
+          }
+        });
+
+        tbody.appendChild(detailTr);
+      }
     });
   }
 
@@ -2122,7 +2227,7 @@
     if (e.target.classList.contains("cp-money-input")) {
       e.target.value = formatComma(e.target.value);
     }
-    if (e.target.classList.contains("opt-stock")) {
+    if (e.target.classList.contains("opt-stock") || e.target.classList.contains("cp-size-stock-inp")) {
       const clamped = clampStock(e.target.value);
       if (String(clamped) !== e.target.value && e.target.value !== "") {
         e.target.value = clamped;
@@ -2138,7 +2243,6 @@
   const studioObserver = new MutationObserver(() => {
     clearTimeout(observerTimer);
     observerTimer = setTimeout(() => {
-      cleanUnwantedUI();
       if (currentView === "studio") {
         if (latestMeasuredSizes?.rows?.length) applyMeasuredSizesToStudio(latestMeasuredSizes);
         if (latestMaterialText) applyFabricMaterialToStudio(latestMaterialText);
