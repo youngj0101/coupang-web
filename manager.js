@@ -377,9 +377,9 @@
 
   function detectSlotRole(fileInput) {
     let cur = fileInput.parentElement;
-    for (let i = 0; i < 4 && cur; i++) {
+    for (let i = 0; i < 5 && cur; i++) {
       const t = (cur.innerText || cur.textContent || "").replace(/\s+/g, " ").trim();
-      if (t.length <= 80) {
+      if (t.length <= 120) {
         if (/앞면/.test(t)) return "앞면";
         if (/뒷면/.test(t)) return "뒷면";
         if (/디테일\s*1/.test(t)) return "디테일 1";
@@ -391,6 +391,28 @@
       cur = cur.parentElement;
     }
     return "";
+  }
+
+  function findOptionCards() {
+    const headings = [...document.querySelectorAll("h1, h2, h3, h4, div, p, b, strong, span")].filter(el =>
+      !el.id?.startsWith("cp") &&
+      !el.closest("#cpStudioRegSection, #cpEditModal") &&
+      el.children.length <= 2 &&
+      /^옵션\s*\d+$/.test((el.innerText || el.textContent || "").replace(/\s+/g, " ").trim())
+    );
+
+    const cards = [];
+    for (const h of headings) {
+      let cur = h.parentElement;
+      for (let i = 0; i < 6 && cur; i++) {
+        if (cur.querySelectorAll('input[type="file"]').length >= 4) {
+          if (!cards.includes(cur)) cards.push(cur);
+          break;
+        }
+        cur = cur.parentElement;
+      }
+    }
+    return cards;
   }
 
   async function applyCollectedPhotosToStudio(makerData) {
@@ -412,34 +434,26 @@
 
     if (!grouped.length) return;
 
-    // 옵션 블록 찾기 ('색상명' 텍스트를 포함한 영역들)
-    const colorInputsAll = [...document.querySelectorAll('input[type="text"]')].filter(inp => {
-      if (inp.closest("#cpStudioRegSection, #cpEditModal")) return false;
-      const ph = inp.placeholder || "";
-      const wrapText = (inp.closest("div")?.parentElement?.innerText || "").replace(/\s+/g, " ");
-      return /블랙/.test(ph) || /색상명\s*\(필수\)/.test(wrapText);
-    });
-
+    const cards = findOptionCards();
     for (let idx = 0; idx < grouped.length; idx++) {
       const g = grouped[idx];
-      const colorInp = colorInputsAll[idx];
-      if (!colorInp) continue;
-
-      setNativeInputValue(colorInp, g.color);
-
-      let optCard = colorInp.parentElement;
-      for (let i = 0; i < 6 && optCard; i++) {
-        if (optCard.querySelectorAll('input[type="file"]').length >= 4) break;
-        optCard = optCard.parentElement;
-      }
+      const optCard = cards[idx];
       if (!optCard) continue;
 
-      const codeInp = [...optCard.querySelectorAll('input[type="text"]')].find(
-        i => i !== colorInp && /품번|색상별/.test((i.placeholder || "") + " " + (i.parentElement?.innerText || ""))
-      );
-      if (codeInp && g.code) {
-        setNativeInputValue(codeInp, g.code);
-      }
+      const textInputs = [...optCard.querySelectorAll('input[type="text"], input:not([type])')];
+      const colorInp = textInputs.find(i =>
+        /블랙|색상/.test(i.placeholder || "") ||
+        /색상명/.test((i.parentElement?.innerText || i.closest("div")?.parentElement?.innerText || ""))
+      ) || textInputs[0];
+
+      if (colorInp) setNativeInputValue(colorInp, g.color);
+
+      const codeInp = textInputs.find(i =>
+        i !== colorInp &&
+        (/품번|색상별/.test(i.placeholder || "") || /옵션\s*품번/.test((i.parentElement?.innerText || i.closest("div")?.parentElement?.innerText || "")))
+      ) || textInputs[1];
+
+      if (codeInp && g.code) setNativeInputValue(codeInp, g.code);
 
       const cardFileInputs = [...optCard.querySelectorAll('input[type="file"]')];
       for (const fInp of cardFileInputs) {
