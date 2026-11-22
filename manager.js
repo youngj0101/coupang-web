@@ -375,21 +375,27 @@
     } catch {}
   }
 
+  function detectSlotRole(fileInput) {
+    let cur = fileInput.parentElement;
+    for (let i = 0; i < 4 && cur; i++) {
+      const t = (cur.innerText || cur.textContent || "").replace(/\s+/g, " ").trim();
+      if (t.length <= 80) {
+        if (/앞면/.test(t)) return "앞면";
+        if (/뒷면/.test(t)) return "뒷면";
+        if (/디테일\s*1/.test(t)) return "디테일 1";
+        if (/디테일\s*2/.test(t)) return "디테일 2";
+        if (/디테일\s*3/.test(t)) return "디테일 3";
+        if (/디테일\s*4/.test(t)) return "디테일 4";
+        if (/원단\s*사진/.test(t)) return "원단 사진";
+      }
+      cur = cur.parentElement;
+    }
+    return "";
+  }
+
   async function applyCollectedPhotosToStudio(makerData) {
     const items = Array.isArray(makerData?.items) ? makerData.items : [];
     if (!items.length) return;
-
-    const sectionHeading = [...document.querySelectorAll("h1, h2, h3, h4, div, p, b, strong")].find(el =>
-      !el.id?.startsWith("cp") &&
-      !el.closest("#cpStudioRegSection, #cpEditModal") &&
-      el.children.length <= 2 &&
-      /색상별\s*원본\s*사진/.test((el.innerText || el.textContent || "").replace(/\s+/g, " ").trim())
-    );
-
-    const photoSection =
-      sectionHeading?.closest("section, div[class*='card'], div[class*='box'], div[class*='section']") ||
-      sectionHeading?.parentElement?.parentElement ||
-      document.body;
 
     const grouped = [];
     const byColor = new Map();
@@ -406,59 +412,49 @@
 
     if (!grouped.length) return;
 
-    const colorLabels = [...photoSection.querySelectorAll("label, span, div, p, b, strong")].filter(el =>
-      !el.id?.startsWith("cp") &&
-      el.children.length <= 2 &&
-      /^색상명/.test((el.innerText || el.textContent || "").replace(/\s+/g, " ").trim())
-    );
+    // 옵션 블록 찾기 ('색상명' 텍스트를 포함한 영역들)
+    const colorInputsAll = [...document.querySelectorAll('input[type="text"]')].filter(inp => {
+      if (inp.closest("#cpStudioRegSection, #cpEditModal")) return false;
+      const ph = inp.placeholder || "";
+      const wrapText = (inp.closest("div")?.parentElement?.innerText || "").replace(/\s+/g, " ");
+      return /블랙/.test(ph) || /색상명\s*\(필수\)/.test(wrapText);
+    });
 
     for (let idx = 0; idx < grouped.length; idx++) {
       const g = grouped[idx];
-      const lbl = colorLabels[idx];
-      const optCard =
-        lbl?.closest("div[style*='border'], div[class*='option'], div[class*='card'], div[class*='box']") ||
-        lbl?.parentElement?.parentElement ||
-        photoSection;
+      const colorInp = colorInputsAll[idx];
+      if (!colorInp) continue;
 
-      const colorInput =
-        lbl?.parentElement?.querySelector("input") ||
-        lbl?.closest("div")?.querySelector("input");
-      if (colorInput) setNativeInputValue(colorInput, g.color);
+      setNativeInputValue(colorInp, g.color);
 
-      const codeLabel = [...optCard.querySelectorAll("label, span, div, p, b, strong")].find(el =>
-        el.children.length <= 2 && /옵션\s*품번/.test((el.innerText || el.textContent || "").replace(/\s+/g, " ").trim())
+      let optCard = colorInp.parentElement;
+      for (let i = 0; i < 6 && optCard; i++) {
+        if (optCard.querySelectorAll('input[type="file"]').length >= 4) break;
+        optCard = optCard.parentElement;
+      }
+      if (!optCard) continue;
+
+      const codeInp = [...optCard.querySelectorAll('input[type="text"]')].find(
+        i => i !== colorInp && /품번|색상별/.test((i.placeholder || "") + " " + (i.parentElement?.innerText || ""))
       );
-      const codeInput = codeLabel?.parentElement?.querySelector("input") || codeLabel?.closest("div")?.querySelector("input");
-      if (codeInput && g.code) setNativeInputValue(codeInput, g.code);
+      if (codeInp && g.code) {
+        setNativeInputValue(codeInp, g.code);
+      }
 
-      const fileBoxes = [...optCard.querySelectorAll("div, label")].filter(el =>
-        el.querySelector('input[type="file"]') &&
-        !/색상명|옵션\s*품번/.test((el.innerText || "").slice(0, 20))
-      );
+      const cardFileInputs = [...optCard.querySelectorAll('input[type="file"]')];
+      for (const fInp of cardFileInputs) {
+        const slotRole = detectSlotRole(fInp);
+        if (!slotRole) continue;
+        const matched = g.photos.find(p => p.role === slotRole);
+        if (!matched?.url) continue;
 
-      for (const box of fileBoxes) {
-        const fileInp = box.querySelector('input[type="file"]');
-        if (!fileInp) continue;
-        const boxText = (box.innerText || "").replace(/\s+/g, " ").trim();
-
-        let matchedItem = null;
-        if (/앞면/.test(boxText)) matchedItem = g.photos.find(p => /앞면/.test(p.role));
-        else if (/뒷면/.test(boxText)) matchedItem = g.photos.find(p => /뒷면/.test(p.role));
-        else if (/디테일\s*1/.test(boxText)) matchedItem = g.photos.find(p => /디테일\s*1/.test(p.role));
-        else if (/디테일\s*2/.test(boxText)) matchedItem = g.photos.find(p => /디테일\s*2/.test(p.role));
-        else if (/디테일\s*3/.test(boxText)) matchedItem = g.photos.find(p => /디테일\s*3/.test(p.role));
-        else if (/디테일\s*4/.test(boxText)) matchedItem = g.photos.find(p => /디테일\s*4/.test(p.role));
-        else if (/원단\s*사진/.test(boxText)) matchedItem = g.photos.find(p => /원단/.test(p.role));
-
-        if (matchedItem?.url) {
-          const file = await urlToFile(matchedItem.url, `${g.color}_${matchedItem.key || "img"}.jpg`);
-          if (file) {
-            setFileInputFiles(fileInp, file);
-            const noFileNode = [...box.querySelectorAll("span, small, p, div")].find(n =>
-              n.children.length === 0 && /선택된\s*파일\s*없음/.test((n.textContent || "").trim())
-            );
-            if (noFileNode) noFileNode.textContent = file.name;
-          }
+        const file = await urlToFile(matched.url, `${g.color}_${matched.key || slotRole}.jpg`);
+        if (file) {
+          setFileInputFiles(fInp, file);
+          const noFileNode = [...(fInp.closest("div")?.parentElement?.querySelectorAll("span, small, p, div") || [])].find(
+            n => n.children.length === 0 && /선택된\s*파일\s*없음/.test((n.textContent || "").trim())
+          );
+          if (noFileNode) noFileNode.textContent = file.name;
         }
       }
     }
