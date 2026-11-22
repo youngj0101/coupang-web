@@ -1076,8 +1076,8 @@
 
   function setupOptionTable(p) {
     const tbody = document.getElementById(`${p}OptBody`);
-    function addRow(opt = { color: "", code: "", size: "", stock: MAX_STOCK }) {
-      const safeStock = clampStock(opt.stock ?? MAX_STOCK);
+    function addRow(opt = { color: "", code: "", size: "", stock: 0 }) {
+      const safeStock = clampStock(opt.stock ?? 0);
       const tr = document.createElement("tr");
       tr.innerHTML = `
         <td><input type="text" class="opt-color" placeholder="예: 블랙" value="${opt.color || ""}"></td>
@@ -1088,7 +1088,7 @@
       `;
       tr.querySelector(".cp-opt-del-btn").addEventListener("click", () => {
         if (tbody.children.length > 1) tr.remove();
-        else tr.querySelectorAll("input").forEach(i => (i.value = i.classList.contains("opt-stock") ? MAX_STOCK : ""));
+        else tr.querySelectorAll("input").forEach(i => (i.value = i.classList.contains("opt-stock") ? 0 : ""));
       });
       tbody.appendChild(tr);
     }
@@ -1098,7 +1098,7 @@
         color: last?.querySelector(".opt-color")?.value || "",
         code: last?.querySelector(".opt-code")?.value || "",
         size: "",
-        stock: MAX_STOCK
+        stock: 0
       });
     });
     addRow();
@@ -1211,8 +1211,8 @@
 
     const defaultName = [brand, kind, code].filter(Boolean).join(" ") || storageData.lfName || storageData.title || "";
     const collectedOptions = (Array.isArray(storageData.options) && storageData.options.length)
-      ? storageData.options.map(o => ({ ...o, stock: clampStock(o.stock ?? MAX_STOCK) }))
-      : (code ? [{ color: "", code, size: "", stock: MAX_STOCK }] : []);
+      ? storageData.options.map(o => ({ ...o, stock: clampStock(o.stock ?? 0) }))
+      : (code ? [{ color: "", code, size: "", stock: 0, stockStatus: "unknown", requiresReview: true }] : []);
 
     const colorsFromOpts = [...new Set(collectedOptions.map(o => o.color).filter(Boolean))];
     const colorText = (Array.isArray(storageData.colors) && storageData.colors.length)
@@ -1510,7 +1510,7 @@
           name: f.name?.stringValue || "",
           lfName: f.lfName?.stringValue || "",
           code: f.code?.stringValue || "",
-          options: options.map(o => ({ ...o, stock: clampStock(o.stock ?? MAX_STOCK) })),
+          options: options.map(o => ({ ...o, stock: clampStock(o.stock ?? 0) })),
           notice: { ...notice, asInfo: notice?.asInfo || "상세페이지 참고" },
           tags: f.tags?.stringValue || "",
           sourceUrl: f.sourceUrl?.stringValue || "",
@@ -1537,7 +1537,7 @@
   async function saveToFirebase(item) {
     const user = getUserName();
     const firstCode = item.code || (item.options?.[0]?.code || "");
-    const safeOpts = (item.options || []).map(o => ({ ...o, stock: clampStock(o.stock ?? MAX_STOCK) }));
+    const safeOpts = (item.options || []).map(o => ({ ...o, stock: clampStock(o.stock ?? 0) }));
     const mergedNotice = { ...(item.notice || {}), asInfo: item.notice?.asInfo || "상세페이지 참고" };
 
     const payload = {
@@ -1580,7 +1580,7 @@
     ];
     const masks = fieldKeys.map(f => `updateMask.fieldPaths=${f}`).join("&");
     const firstCode = item.code || (item.options?.[0]?.code || "");
-    const safeOpts = (item.options || []).map(o => ({ ...o, stock: clampStock(o.stock ?? MAX_STOCK) }));
+    const safeOpts = (item.options || []).map(o => ({ ...o, stock: clampStock(o.stock ?? 0) }));
     const mergedNotice = { ...(item.notice || {}), asInfo: item.notice?.asInfo || "상세페이지 참고" };
 
     const payload = {
@@ -1677,7 +1677,7 @@
         const brandVal = p.brand || (p.name.split(" ")[0] || "자체브랜드");
         const opts = (p.options && p.options.length)
           ? p.options
-          : [{ color: "", code: p.code || "", size: "", stock: MAX_STOCK }];
+          : [{ color: "", code: p.code || "", size: "", stock: 0, stockStatus: "unknown", requiresReview: true }];
         const allColorsStr = [...new Set(opts.map(o => o.color).filter(Boolean))].join(", ");
         const n = p.notice || {};
 
@@ -1695,7 +1695,7 @@
           if (opt.size) { r[11] = "사이즈"; r[12] = opt.size; }
           r[61] = p.price || 0;
           r[63] = p.regularPrice || p.price || 0;
-          r[64] = clampStock(opt.stock ?? MAX_STOCK);
+          r[64] = clampStock(opt.stock ?? 0);
           r[65] = 2;
           r[66] = 0;
           r[67] = 1;
@@ -1742,7 +1742,7 @@
     document.getElementById("eLfName").value = p.lfName || "";
     editCatCtrl.setPath(p.category || "");
     editOptCtrl.setOptions(
-      p.options && p.options.length ? p.options : [{ color: "", code: p.code || "", size: "", stock: MAX_STOCK }]
+      p.options && p.options.length ? p.options : [{ color: "", code: p.code || "", size: "", stock: 0, stockStatus: "unknown", requiresReview: true }]
     );
     setNoticeToForm("e", p.notice || {});
     document.getElementById("eTags").value = (p.tags || "").replace(/\//g, ", ");
