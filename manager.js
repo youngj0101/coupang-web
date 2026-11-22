@@ -319,24 +319,7 @@
     const text = materialText || latestMaterialText;
     if (!text) return;
 
-    const labels = [...document.querySelectorAll("label, span, div, p, b, strong")].filter(el =>
-      !el.id?.startsWith("cp") &&
-      !el.closest("#cpStudioRegSection, #cpEditModal") &&
-      el.children.length <= 2 &&
-      /확인한\s*소재\s*및\s*혼용률/.test((el.innerText || el.textContent || "").replace(/\s+/g, " ").trim())
-    );
-
-    for (const lbl of labels) {
-      let cur = lbl.parentElement;
-      for (let i = 0; i < 4 && cur; i++) {
-        const inp = cur.querySelector("input, textarea");
-        if (inp) {
-          setNativeInputValue(inp, text);
-          return;
-        }
-        cur = cur.parentElement;
-      }
-    }
+    const input=document.getElementById('guideFiber'); if(input){input.removeAttribute('maxlength');setNativeInputValue(input,text)}
   }
 
   async function urlToFile(urlOrDataUrl, filename = "image.jpg") {
@@ -500,7 +483,7 @@
     observerTimer = setTimeout(() => {
       cleanUnwantedUI();
       if (latestMeasuredSizes?.rows?.length) applyMeasuredSizesToStudio(latestMeasuredSizes);
-      if (latestMaterialText) applyFabricMaterialToStudio(latestMaterialText);
+      
       if (!initialScrollLocked) {
         scrollPageToTop();
         initialScrollLocked = true;
@@ -520,9 +503,7 @@
         applyMeasuredSizesToStudio(latestMeasuredSizes);
       }
     }
-    if (latestMaterialText) {
-      applyFabricMaterialToStudio(latestMaterialText);
-    }
+
     if (enforceCount >= 25) clearInterval(enforceTimer);
   }, 300);
 
@@ -816,7 +797,7 @@
 
   const collectView = document.createElement("section");
   collectView.id = "cpCollectView";
-  collectView.innerHTML=`<h1 class="cp-page-heading">상품 수집 보관함</h1><p class="lf29-note">LF몰 상품 페이지에서 ‘이 상품 저장’을 누르면 여기에 누적됩니다. 같은 품번과 색상을 다시 수집하면 해당 카드만 갱신됩니다.</p><div class="cp-section-line"><h2>보관 상품 <span id="cpCollectTotal"></span></h2><div class="cp-list-tools"><input id="cpCollectSearch" aria-label="보관 상품 검색" placeholder="상품명·품번·색상"><button id="btnCollectSync" type="button">목록 새로고침</button></div></div><p id="lfConnection" role="status"></p><div id="cpCollectedGrid" class="cp-product-grid"></div>`;
+  collectView.innerHTML=`<h1 class="cp-page-heading">상품 수집 보관함</h1><p class="lf29-note">LF몰 상품 페이지에서 ‘이 상품 저장’을 누르면 여기에 누적됩니다. 같은 색상 재수집은 갱신되고, 같은 상품의 여러 색상은 한 카드에 보관됩니다. 기존 카드는 체크한 후 같은 상품으로 묶을 수 있습니다.</p><div class="cp-section-line"><h2>보관 상품 <span id="cpCollectTotal"></span></h2><div class="cp-list-tools"><input id="cpCollectSearch" aria-label="보관 상품 검색" placeholder="상품명·품번·색상"><button type="button" id="lfRemove">선택 삭제</button><button id="lfMerge" type="button">선택 색상 묶기</button><button id="btnCollectSync" type="button">목록 새로고침</button></div></div><p id="lfConnection" role="status"></p><div id="cpCollectedGrid" class="cp-product-grid"></div>`;
   const listView = document.createElement("div");
   listView.id = "cpListView";
   listView.hidden = true;
@@ -1254,7 +1235,7 @@
     if (d.brand && (overwrite || !document.getElementById("sBrand").value)) {
       document.getElementById("sBrand").value = d.brand;
     }
-    if (d.defaultName && (overwrite || !document.getElementById("sName").value)) {
+    if (d.defaultName && !document.getElementById("sName").value) {
       document.getElementById("sName").value = d.defaultName;
     }
     if (d.lfName && (overwrite || !document.getElementById("sLfName").value)) {
@@ -1425,11 +1406,11 @@
   function money(n){return Number(n)>0?formatWon(n):'미확인'}
   function updateCollectView(){const grid=el('cpCollectedGrid');grid.replaceChildren();const q=el('cpCollectSearch').value.trim().toLowerCase();const list=archive.filter(d=>[d.lfName,d.code,...d.colors].join(' ').toLowerCase().includes(q));el('cpCollectTotal').textContent=list.length+' / '+archive.length+'개';el('lfConnection').textContent=connected?'현재 Chrome 프로필의 수집 자료':'수집 확장 프로그램 연결 대기 중. 확장 프로그램과 사이트 파일을 함께 업데이트했는지 확인하세요.';
     for(const d of list){const a=node('article',null,'cp-product-card'), info=node('div',null,'cp-product-info');const images=d.items||[];const main=node('div',null,'cp-product-main');const im=node('img');im.loading='lazy';im.alt=d.lfName;const front=images.find(x=>x.role==='앞면')||images[0];if(safeLink(front?.url))im.src=front.url;main.append(im);const thumbs=node('div',null,'cp-thumb-row');for(const p of images.slice(0,5)){const i=node('img');i.loading='lazy';i.alt=p.role;i.src=safeLink(p.url);thumbs.append(i)}info.append(node('b',d.lfName||'상품명 미확인'),node('span',[d.code,...d.colors].join(' · ')),node('p','최대혜택가 '+money(d.discountPrice)+' / 정가 '+money(d.regularPrice)+(d.priceRequiresReview?' · 확인 필요':'')),node('p','원본 '+images.length+'장 · '+(d.savedAt?formatDate(d.savedAt):'이전 자료')),node('p',(d.options||[]).map(o=>(o.size||'사이즈 미확인')+' : '+(o.stockStatus==='unknown'?'수량 미확인':(o.sourceStock??o.stock)+'개')).join(' / ')||'재고 미확인'));
-    const link=node('a','LF몰 원본 보기');link.href=safeLink(d.url);link.target='_blank';link.rel='noopener noreferrer';info.append(link);const btn=node('button','이 상품 제작','cp-send-studio');btn.onclick=()=>{if(bridgeMakerData?.id===d.id)return switchView('studio');const u=new URL(location.href);u.searchParams.set('make',d.id);location.assign(u.href)};a.append(main,thumbs,info,btn);grid.append(a)}if(!list.length)grid.append(node('div',connected?(q?'검색 결과가 없습니다.':'아직 보관된 상품이 없습니다.'):'보관함 연결 중','cp-empty-card'))}
+    const link=node('a','LF몰 원본 보기');link.href=safeLink(d.url);link.target='_blank';link.rel='noopener noreferrer';info.append(link);const btn=node('button','이 상품 제작','cp-send-studio');btn.onclick=()=>{if(bridgeMakerData?.id===d.id)return switchView('studio');const u=new URL(location.href);u.searchParams.set('make',d.id);location.assign(u.href)};const pick=node('label');const check=node('input');check.type='checkbox';check.value=d.id;check.className='lfMergePick';pick.append(check,document.createTextNode(' 묶을 상품 선택'));if(d.variants?.length>1){const variants=node('details');variants.append(node('summary','색상별 품번·가격 '+d.variants.length+'개'));for(const v of d.variants){const line=node('p',v.colors.join(', ')+' · '+v.code+' · 최대혜택가 '+money(v.discountPrice)+' / 정가 '+money(v.regularPrice));const lk=node('a',' 원본 보기');lk.href=safeLink(v.url);lk.target='_blank';lk.rel='noopener';line.append(lk);variants.append(line)}info.append(variants)}const del=node('button','보관함에서 삭제');del.type='button';del.onclick=()=>removeFromArchive([d.id]);a.append(pick,main,thumbs,info,btn,del);grid.append(a)}if(!list.length)grid.append(node('div',connected?(q?'검색 결과가 없습니다.':'아직 보관된 상품이 없습니다.'):'보관함 연결 중','cp-empty-card'))}
   function switchView(name){if(name==='studio'&&!bridgeMakerData){name='collect';el('lfConnection').textContent='먼저 보관함에서 제작할 상품을 선택하세요.'}layout.dataset.view=name;const inMaker=name==='studio';menuButtons.forEach(b=>{b.classList.toggle('active',b.dataset.view===name);b.setAttribute('aria-current',b.dataset.view===name?'page':'false')});titleEl.textContent=titles[name];collectView.hidden=name!=='collect';studioRegSection.hidden=!inMaker;if(studioMain)studioMain.hidden=!inMaker;listView.hidden=name!=='stock';quickSaveBtn.hidden=!inMaker;quickSaveBtn.style.display=inMaker?'':'none';const step=['collect','studio','stock'].indexOf(name)+1;el('cpStepText').textContent='현재 '+step+' / 3 단계';el('cpStepBar').style.width=step*100/3+'%';if(name==='stock')fetchProducts();scrollPageToTop()}
   const poll=()=>window.postMessage({type:'LF29_POLL'},location.origin);
   window.addEventListener('message',async e=>{if(e.source!==window||e.origin!==location.origin)return;const msg=e.data;if(msg?.type==='LF29_ERROR'){el('lfConnection').textContent=msg.message;return}if(msg?.type!=='LF29_LIST'||!Array.isArray(msg.records))return;connected=true;archive=msg.records.filter(d=>d?.id&&Array.isArray(d.items)&&Array.isArray(d.colors));updateCollectView();if(!pendingId||mounting)return;const selected=archive.find(d=>d.id===pendingId);if(!selected){el('lfConnection').textContent='선택한 상품을 찾지 못했습니다.';return}pendingId=null;mounting=true;bridgeMakerData=selected;try{switchView('studio');setNativeInputValue(document.getElementById('code'),selected.code);setNativeInputValue(document.getElementById('brand'),(selected.lfName.match(/헤지스|닥스|질스튜어트|마에스트로|알레그리/i)||[])[0]);setNativeInputValue(document.querySelector('input[placeholder="긴팔 카라 니트"]'),selected.lfName);await syncFromStudioPanel(false,true);if(typeof window.LF29Mount!=='function')throw Error('사이트 bridge.js를 함께 교체하세요.');await window.LF29Mount(selected)}catch(err){alert('선택 상품 불러오기: '+err.message)}finally{mounting=false}});
-  menuButtons.forEach(b=>b.onclick=()=>switchView(b.dataset.view));sidebar.querySelectorAll('.cp-side-link').forEach(b=>b.onclick=()=>switchView(b.dataset.go));el('btnCollectSync').onclick=poll;el('cpCollectSearch').oninput=updateCollectView;switchView('collect');updateCollectView();poll();
+  menuButtons.forEach(b=>b.onclick=()=>switchView(b.dataset.view));sidebar.querySelectorAll('.cp-side-link').forEach(b=>b.onclick=()=>switchView(b.dataset.go));const removeFromArchive=ids=>{const found=archive.filter(g=>ids.includes(g.id));if(!found.length)return alert('삭제할 상품을 선택하세요.');if(confirm(found.map(g=>g.lfName+' ('+g.colors.join(', ')+')').join('\n')+'\n선택한 '+found.length+'개 상품과 해당 색상들을 수집 보관함에서 삭제할까요? 재고 관리 등록 정보는 유지됩니다.'))window.postMessage({type:'LF30_DELETE',ids},location.origin)};el('lfRemove').onclick=()=>removeFromArchive([...document.querySelectorAll('.lfMergePick:checked')].map(b=>b.value));el('lfMerge').onclick=()=>{const ids=[...document.querySelectorAll('.lfMergePick:checked')].map(x=>x.value);if(ids.length<2)return alert('같은 상품의 색상 카드 두 개 이상을 체크하세요.');if(confirm('선택한 카드들을 같은 상품의 색상 옵션으로 묶을까요?'))window.postMessage({type:'LF30_MERGE',ids},location.origin)};el('btnCollectSync').onclick=poll;el('cpCollectSearch').oninput=updateCollectView;switchView('collect');updateCollectView();poll();
 
   function updateMonthOptions() {
     const select = document.getElementById("mMonthFilter");
