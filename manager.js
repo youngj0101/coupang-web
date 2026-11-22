@@ -258,26 +258,33 @@
     });
   }
 
-  function findSizeTableContainer() {
+  // aria-label 기반 사이즈표 행과 '사이즈 한 줄 추가' 버튼 찾기
+  function getSizeRowsAndAddBtn() {
     const addBtn = [...document.querySelectorAll("button")].find(b =>
       !b.id?.startsWith("cp") &&
       !b.closest("#cpStudioRegSection, #cpEditModal") &&
-      /사이즈\s*한\s*줄\s*추가/.test((b.innerText || "").replace(/\s+/g, " ").trim())
+      /사이즈\s*한\s*줄\s*추가/.test((b.innerText || b.textContent || "").replace(/\s+/g, " ").trim())
     );
-    if (addBtn) {
-      let cur = addBtn.parentElement;
-      for (let i = 0; i < 4 && cur; i++) {
-        if (cur.querySelectorAll("input").length >= 4) return { container: cur, addBtn };
-        cur = cur.parentElement;
-      }
-    }
 
-    const headerMatch = [...document.querySelectorAll("div, section, table")].find(el => {
-      if (el.id?.startsWith("cp") || el.closest("#cpStudioRegSection, #cpEditModal")) return false;
-      const t = (el.innerText || "").replace(/\s+/g, " ");
-      return /총\s*길이/.test(t) && /어깨너비/.test(t) && /가슴둘레/.test(t) && el.querySelectorAll("input").length >= 4;
-    });
-    return { container: headerMatch || null, addBtn: addBtn || null };
+    const sizeInputs = [...document.querySelectorAll('input[aria-label="사이즈"]')].filter(
+      inp => !inp.closest("#cpStudioRegSection, #cpEditModal")
+    );
+
+    const rows = sizeInputs
+      .map(szInp => {
+        const tr = szInp.closest("tr");
+        if (!tr) return null;
+        return {
+          size: szInp,
+          totalLength: tr.querySelector('input[aria-label="총 길이"]'),
+          shoulder: tr.querySelector('input[aria-label="어깨너비"]'),
+          chest: tr.querySelector('input[aria-label="가슴둘레"]'),
+          sleeve: tr.querySelector('input[aria-label="소매길이"]')
+        };
+      })
+      .filter(Boolean);
+
+    return { rows, addBtn: addBtn || null };
   }
 
   function applyMeasuredSizesToStudio(measuredSizes) {
@@ -285,44 +292,24 @@
     const data = measuredSizes?.rows?.length ? measuredSizes : latestMeasuredSizes;
     if (!data?.rows?.length) return;
 
-    const { container, addBtn } = findSizeTableContainer();
-    if (!container) return;
+    let { rows: rowEls, addBtn } = getSizeRowsAndAddBtn();
+    if (!rowEls.length) return;
 
-    const getRowGroups = () => {
-      const trs = [...container.querySelectorAll("tr")].filter(tr => tr.querySelectorAll("input").length >= 4);
-      if (trs.length) return trs.map(tr => [...tr.querySelectorAll("input")]);
-
-      const rowDivs = [...container.querySelectorAll("div")].filter(d => {
-        const inps = d.querySelectorAll("input");
-        return inps.length >= 4 && inps.length <= 6 && ![...d.querySelectorAll("div")].some(sub => sub.querySelectorAll("input").length >= 4);
-      });
-      if (rowDivs.length) return rowDivs.map(d => [...d.querySelectorAll("input")]);
-
-      const allInps = [...container.querySelectorAll("input")];
-      const groups = [];
-      for (let i = 0; i + 4 <= allInps.length; i += 5) {
-        groups.push(allInps.slice(i, i + 5));
-      }
-      return groups;
-    };
-
-    let groups = getRowGroups();
     let guard = 0;
-    while (groups.length < data.rows.length && addBtn && guard < 20) {
+    while (rowEls.length < data.rows.length && addBtn && guard < 25) {
       addBtn.click();
-      groups = getRowGroups();
+      rowEls = getSizeRowsAndAddBtn().rows;
       guard++;
     }
 
     data.rows.forEach((r, idx) => {
-      const rowInputs = groups[idx];
-      if (!rowInputs) return;
-      const vals = [r.size, r.totalLength, r.shoulder, r.chest, r.sleeve];
-      vals.forEach((v, cIdx) => {
-        if (rowInputs[cIdx] && v !== undefined && v !== "") {
-          setNativeInputValue(rowInputs[cIdx], v);
-        }
-      });
+      const target = rowEls[idx];
+      if (!target) return;
+      setNativeInputValue(target.size, r.size);
+      setNativeInputValue(target.totalLength, r.totalLength);
+      setNativeInputValue(target.shoulder, r.shoulder);
+      setNativeInputValue(target.chest, r.chest);
+      setNativeInputValue(target.sleeve, r.sleeve);
     });
   }
 
@@ -355,7 +342,6 @@
     let thumbUrl = "";
     let detailImgUrl = "";
 
-    // 1) 제작실 화면에 렌더링된 캔버스나 생성 이미지 탐색
     const canvases = [...document.querySelectorAll("canvas")].filter(c => c.width > 100 && c.height > 100);
     if (canvases.length) {
       try { thumbUrl = canvases[0].toDataURL("image/jpeg", 0.85); } catch {}
