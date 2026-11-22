@@ -258,7 +258,6 @@
     });
   }
 
-  // aria-label 기반 사이즈표 행과 '사이즈 한 줄 추가' 버튼 찾기
   function getSizeRowsAndAddBtn() {
     const addBtn = [...document.querySelectorAll("button")].find(b =>
       !b.id?.startsWith("cp") &&
@@ -305,11 +304,11 @@
     data.rows.forEach((r, idx) => {
       const target = rowEls[idx];
       if (!target) return;
-      setNativeInputValue(target.size, r.size);
-      setNativeInputValue(target.totalLength, r.totalLength);
-      setNativeInputValue(target.shoulder, r.shoulder);
-      setNativeInputValue(target.chest, r.chest);
-      setNativeInputValue(target.sleeve, r.sleeve);
+      if (r.size) setNativeInputValue(target.size, r.size);
+      if (r.totalLength) setNativeInputValue(target.totalLength, r.totalLength);
+      if (r.shoulder) setNativeInputValue(target.shoulder, r.shoulder);
+      if (r.chest) setNativeInputValue(target.chest, r.chest);
+      if (r.sleeve) setNativeInputValue(target.sleeve, r.sleeve);
     });
   }
 
@@ -380,6 +379,24 @@
     }, 150);
   });
   studioObserver.observe(document.documentElement, { childList: true, subtree: true });
+
+  // 제작실 기본 사이즈표 덮어쓰기를 방지하기 위해 초기 6초간 실측값·소재 유지
+  let enforceCount = 0;
+  const enforceTimer = setInterval(() => {
+    enforceCount++;
+    cleanUnwantedUI();
+    if (latestMeasuredSizes?.rows?.length) {
+      const firstTotal = document.querySelector('input[aria-label="총 길이"]');
+      const expectedFirst = String(latestMeasuredSizes.rows[0]?.totalLength || "").trim();
+      if (firstTotal && expectedFirst && firstTotal.value.trim() !== expectedFirst) {
+        applyMeasuredSizesToStudio(latestMeasuredSizes);
+      }
+    }
+    if (latestMaterialText) {
+      applyFabricMaterialToStudio(latestMaterialText);
+    }
+    if (enforceCount >= 20) clearInterval(enforceTimer);
+  }, 300);
 
   const style = document.createElement("style");
   style.textContent = `
