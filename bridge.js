@@ -78,6 +78,26 @@ function setupBanners(){
 document.getElementById('lfLoad').addEventListener('click',applyAll);
 setupSizeTemplates();setupColorTextRule();setupCheckPointBuilder();setupBanners();
 // Local, deterministic copy helper. No network, AI fees, or changes to the LF source name.
+function retailCopy37(d,f,choice={}){
+ const compact=v=>String(v||'').replace(/\s+/g,' ').trim();const title=f.title,src=compact(title+' '+(d.description||'')+' '+(choice.extra||[]).join(' '));const has=re=>re.test(src);const category=/(클러치\s*백|클러치)/.test(title)?'클러치백':/머플러|목도리/.test(title)?'머플러':/플리스|후리스/.test(title)?(/집업/.test(title)?'플리스 집업':'플리스 점퍼'):/다운\s*점퍼/.test(title)?'다운 점퍼':f.cat||'아이템';const knit=/니트|스웨터|가디건/.test(category),bag=category==='클러치백',scarf=category==='머플러',outer=/점퍼|패딩|코트|재킷|아우터|플리스/.test(category);const cp={...f.cp,...choice};const house=has(/하우스\s*체크/),stripe=cp.pattern==='스트라이프 패턴',check=house||cp.pattern==='체크 패턴';const collar=has(/카라|칼라|폴로/)||cp.neck==='카라넥';const high=has(/하이\s*넥|터틀\s*넥/)||cp.neck==='반하이넥';const quarter=has(/7\s*부|칠부/);const neutral=f.colors.length>0&&f.colors.every(c=>/블랙|그레이|네이비|브라운|세피아|차콜|베이지|아이보리/.test(c));const fur=has(/(?:탈부착|분리형|탈착)\s*(?:퍼|털)\s*(?:카라|칼라)/);const length=has(/미들|미디엄/)?'미들 기장의 ':has(/숏\s*(기장|패딩)/)?'숏 기장의 ':'';
+ const variants=d.variants?.length?d.variants:[d];const shellOf=v=>{const n=compact(v.notice?.material||'');return n.split(/안감|배색|충전재|충전물|주머니|시보리|부속|트리밍/)[0].replace(/^.*?(?:겉감|본체|주소재|원단)\s*[:：]\s*/,'').trim()};const shells=variants.map(shellOf);const shell=shells.every(x=>x===shells[0])?shells[0]:'';const fibres=[['캐시미어','캐시미어|캐시미르'],['울','울|양모|모'],['린넨','린넨|리넨|아마'],['면','면|코튼'],['소가죽','소가죽|천연소가죽'],['폴리에스터','폴리에스[터텔]'],['나일론','나일론']];let fabric='';for(const [label,pat] of fibres){const re=new RegExp('(?:^|[\\s,:：/])(?:'+pat+')\\s*[:：]?\\s*(\\d+(?:\\.\\d+)?)\\s*%');const m=shell.match(re)||(!shell&&shells.every(v=>!v)?title.match(re):null);if(m&&+m[1]>0&&+m[1]<=100){fabric=label+(+m[1]===100?' 100%':' 혼방');break}}if(!fabric){fabric=(/구스다운|덕다운/.test(choice.material||'')?'':choice.material)||fibres.filter(([l])=>l!=='울').find(([,p])=>new RegExp(p).test(title))?.[0]||(/울\s*(?:혼방|니트|스웨터|소재)/.test(title)?'울':'');if(fabric&&!/혼방|100%/.test(fabric)&&new RegExp(fabric+'\\s*혼방').test(title))fabric+=' 혼방'}if(!fabric&&bag&&/소가죽/.test(shell))fabric='소가죽';const soft=variants.every(v=>v.wear?.['촉감']==='부드러움')||has(/부드러운\s*(?:소재|촉감|터치)/);const lines=[];const add=s=>{if(s&&lines.length<4&&!lines.includes(s))lines.push(s)};
+ const form=category==='긴팔티셔츠'?'긴팔 티셔츠':category==='반팔티'?'반팔 티셔츠':category;
+ if(bag&&has(/음각/))add((has(/기하학/) ? '기하학적인 음각 무늬로':'은은한 음각 무늬로')+' 표면에 깊이를 더한 클러치백입니다.');
+ else if(fur)add('목선을 감싸는 퍼 카라가 돋보이는 '+length+form+'입니다.');
+ else if(has(/어깨/)&&check&&has(/배색/))add('어깨를 따라 들어간 체크 배색이 단정한 바탕에 포인트를 주는 '+form+'입니다.');
+ else if(house)add((f.brand?(has(/닥스\s*골프/)&&f.brand==='닥스'?'닥스 골프':f.brand)+'의 ':'')+'하우스 체크로 클래식한 분위기를 살린 '+(collar?'카라넥 ':'')+form+'입니다.');
+ else if(has(/멜란지/))add('은은하게 색이 섞인 멜란지 바탕에 '+(collar?'단정한 카라를 더한 ':'표정을 살린 ')+form+'입니다.');
+ else if(quarter&&stripe)add('경쾌한 스트라이프와 손목이 드러나는 7부 소매가 어우러진 '+form+'입니다.');
+ else if(high&&knit)add('목선을 감싸는 하이넥과 원단의 짜임이 돋보이는 '+form+'입니다.');
+ else if(has(/골지/))add('골지 짜임의 결이 드러나 단색 하의와도 어울리는 '+form+'입니다.');
+ else if(quarter&&collar)add('단정한 카라에 7부 소매를 더해 손목 선이 드러나는 '+form+'입니다.');
+ else if(check||stripe)add((stripe?'스트라이프가 경쾌한 리듬을 만드는 ':'체크 무늬가 클래식한 인상을 주는 ')+form+'입니다.');
+ else if(category!=='아이템')add((f.brand?f.brand+'에서 선보이는 ':'')+(collar?'카라 디자인의 ':'')+length+form+'입니다.');
+ if(!fabric&&/구스다운|덕다운/.test(cp.material||''))add('충전재에는 '+cp.material+'을 사용했습니다. 이너와 겹쳐 입는 아우터로 연출해 보세요.');if(fabric){if(scarf&&fabric==='캐시미어 100%')add('캐시미어 100%로 짜여 목에 둘렀을 때 소재의 고운 결이 돋보입니다.');else if(bag&&fabric.startsWith('소가죽'))add('소가죽을 사용해 손에 들었을 때 가죽 표면의 결이 돋보입니다.');else add(fabric+(shell&&/겉감/.test(d.notice?.material||'')?' 겉감':' 소재')+(shell&&/겉감/.test(d.notice?.material||'')?'을':'를')+' 사용해 '+(soft?'부드러운 터치감을 살렸습니다.':knit?'짜임 사이로 원사의 결이 드러납니다.':/린넨|면/.test(fabric)?'자연스러운 소재감을 살렸습니다.':'소재 본연의 질감이 드러납니다.'))}else if(soft)add('LF몰 착용 정보에서 부드러운 촉감으로 소개한 소재를 사용했습니다.');
+ if(fur)add('퍼 카라를 떼면 목선이 간결해져 같은 점퍼를 다른 분위기로 입을 수 있습니다.');else if(bag&&has(/손목\s*스트랩/))add('손목 스트랩을 걸어 들거나 가방 몸체를 손에 쥐는 두 가지 연출이 가능합니다.');else if(has(/지퍼\s*(?:여밈|잠금)|집업/))add(bag?'지퍼로 입구를 여닫을 수 있어 소지품을 넣고 꺼내기 편한 디자인입니다.':'앞 지퍼를 열어 이너를 보이거나 끝까지 여며 단정하게 연출할 수 있습니다.');else if(has(/자수|케이블|플리츠|포켓/))add(has(/케이블/)?'케이블 무늬가 짜임에 입체감을 더해 단독으로 입어도 포인트가 됩니다.':has(/자수/)?'자수 장식에 시선이 모여 다른 액세서리를 더하지 않아도 좋습니다.':has(/플리츠/)?'일정하게 잡힌 주름이 움직일 때마다 다른 선을 보여줍니다.':'포켓 디테일이 디자인에 실용적인 포인트를 더합니다.');
+ if(lines.length<2&&check&&outer)add('규칙적으로 이어지는 체크가 시선을 모아 단색 이너만 받쳐 입어도 좋습니다.');if(lines.length<3&&neutral)add('차분한 '+f.colors.slice(0,2).join('·')+' 계열이라 밝은 톤의 옷과 함께하면 색 대비가 살아납니다.');
+ if(form!=='아이템'){const styling=bag?'재킷 차림에는 단정하게, 데님 차림에는 가볍게 손에 들어 보세요.':scarf?'무늬 없는 코트 위에 한 번 둘러 주면 목선에 자연스럽게 포인트가 생깁니다.':knit?(check||stripe?'무늬 없는 슬랙스와 매치하면 상의의 패턴이 돋보이고 전체 차림은 단정해집니다.':'슬랙스와 입으면 단정하게, 데님과 입으면 조금 더 편안한 분위기로 연출할 수 있습니다.'):outer?(has(/골프/)?'골프 팬츠에는 필드룩으로, 데님에는 주말 외출용 아우터로 매치해 보세요.':'단색 이너 위에 가볍게 걸치고 일자 팬츠를 더하면 간결한 외출 차림이 완성됩니다.'):/티셔츠|반팔티|셔츠|블라우스/.test(form)?'데님에는 편안하게, 면 팬츠에는 한층 단정하게 매치할 수 있습니다.':/바지|스커트/.test(form)?'단색 셔츠를 곁들이면 하의의 디자인이 돋보이는 단정한 차림이 됩니다.':form==='원피스'?'플랫 슈즈와 입으면 가볍게, 재킷을 걸치면 단정한 외출 차림으로 연출할 수 있습니다.':'';add(styling)}return lines.join('\n')}
+
 function lfCopyFacts3(d, override={}) {
   const tidy=s=>String(s??'').replace(/[\u0000-\u001f]+/g,' ').replace(/\s+/g,' ').trim();
   const uniq=xs=>[...new Set(xs.map(tidy).filter(Boolean))];
@@ -87,7 +107,7 @@ function lfCopyFacts3(d, override={}) {
   const title=tidy(source.replace(/\[[^\]]*(특가|혜택|할인|쿠폰|단독|아울렛|사은|적립|최저가|배송)[^\]]*\]/g,' ').replace(/(?:아울렛특가|단독특가|무료배송|쿠폰할인|최저가|\d+%\s*할인)/g,' ').replace(/[\[\]()]/g,' '));
   const knownBrands=[[/닥스|\bDAKS\b/i,'닥스'],[/헤지스|\bHAZZYS\b/i,'헤지스'],[/질스튜어트|JILL\s*STUART/i,'질스튜어트'],[/마에스트로|MAESTRO/i,'마에스트로'],[/알레그리|ALLEGRI/i,'알레그리'],[/티엔지티|\bTNGT\b/i,'티엔지티'],[/\bATCORNER\b|앳코너/i,'앳코너'],[/던스트|\bDUNST\b/i,'던스트']];
   const brand=tidy(override.brand||d.brand||knownBrands.find(([re])=>re.test(title))?.[1]||'');
-  const categories=[[/원피스|드레스(?!셔츠)/,'원피스'],[/다운\s*(?:코트|재킷|자켓|점퍼)|패딩|다운점퍼/,'패딩'],[/가디건|카디건/,'가디건'],[/스웨터/,'스웨터'],[/니트/,'니트'],[/(?:긴팔|긴소매|롱슬리브).{0,18}(?:티셔츠|티\b|티(?=\s|$))|(?:티셔츠).{0,18}(?:긴팔|긴소매)/,'긴팔티셔츠'],[/(?:반팔|반소매).{0,18}(?:티셔츠|티(?=\s|$))|티셔츠.{0,18}(?:반팔|반소매)/,'반팔티'],[/후드\s*티/,'후드티'],[/맨투맨/,'맨투맨'],[/티셔츠|카라티|긴팔티|반팔티/,'티셔츠'],[/블라우스/,'블라우스'],[/셔츠|남방/,'셔츠'],[/재킷|자켓/,'재킷'],[/코트/,'코트'],[/점퍼|잠바/,'점퍼'],[/아우터/,'아우터'],[/베스트|조끼/,'조끼'],[/바지|팬츠|슬랙스|데님진/,'바지'],[/스커트|치마/,'스커트']];
+  const categories=[[/클러치(?:백)?/,'클러치백'],[/머플러|목도리/,'머플러'],[/원피스|드레스(?!셔츠)/,'원피스'],[/다운\s*(?:코트|재킷|자켓|점퍼)|패딩|다운점퍼/,'패딩'],[/가디건|카디건/,'가디건'],[/스웨터/,'스웨터'],[/니트/,'니트'],[/(?:긴팔|긴소매|롱슬리브).{0,18}(?:티셔츠|티\b|티(?=\s|$))|(?:티셔츠).{0,18}(?:긴팔|긴소매)/,'긴팔티셔츠'],[/(?:반팔|반소매).{0,18}(?:티셔츠|티(?=\s|$))|티셔츠.{0,18}(?:반팔|반소매)/,'반팔티'],[/후드\s*티/,'후드티'],[/맨투맨/,'맨투맨'],[/티셔츠|카라티|긴팔티|반팔티/,'티셔츠'],[/블라우스/,'블라우스'],[/셔츠|남방/,'셔츠'],[/재킷|자켓/,'재킷'],[/코트/,'코트'],[/점퍼|잠바/,'점퍼'],[/아우터/,'아우터'],[/베스트|조끼/,'조끼'],[/바지|팬츠|슬랙스|데님진/,'바지'],[/스커트|치마/,'스커트']];
   const cat=tidy(override.category||categories.find(([re])=>re.test(title))?.[1]||'');
   const n=d.notice||{}, mat=confirmed(tidy(n.material))?tidy(n.material):'';
   const shell=mat.split(/안감|배색|충전재|충전물|주머니|심지|부속/)[0];
@@ -108,21 +128,7 @@ function lfCopyFacts3(d, override={}) {
   const materialWord=cp.material?.replace(/\s/g,''), patternWord=cp.pattern?.replace(/ 패턴$/,'').replace('전체 퀼팅','퀼팅');
   const tokens=uniq([gender,cp.season,materialWord,patternWord,cp.neck?.replace(/\s/g,''),...rawFeatures,cp.feature?.replace('슬림한 실루엣','슬림핏'),cp.style,colors.length===1&&colors[0],colors.length>1&&colors.length+'컬러',sizes.length>1&&sizes.length+'사이즈',d.code&&/^[A-Z\d_-]{3,24}$/i.test(d.code)?d.code:''].filter(Boolean)).filter(w=>w!==brand&&w!==cat);
   const mid=tokens.slice(0,5); const words=uniq([brand,...mid,cat]);const name=words.join(' ');
-  const para=[];const detachable=/(?:탈부착|탈착|분리형)\s*(?:퍼|털)?\s*(?:카라|칼라|후드)/.exec(title)?.[0];const part=detachable?.replace(/^(탈부착|탈착|분리형)\s*/,'').replace(/퍼\s*(카라|칼라)/,'퍼 카라');const length=/미들|미디엄|미디\s*기장/.test(title)?'미들 기장':/롱\s*(?:기장|다운|패딩|코트)/.test(title)?'롱 기장':/숏\s*(?:기장|다운|패딩|점퍼)/.test(title)?'숏 기장':'';const type=/다운\s*점퍼/.test(title)?'다운 점퍼':cat;
-  const productType=type||'의류';const cleanColors=colors.filter(c=>!/[\[\]<>]/.test(c));
-  const add=s=>{if(s&&!para.includes(s)&&para.length<4)para.push(s)};
-  if(length)add(length+'으로 디자인한 '+productType+'입니다.');
-  if(part){add((part==='퍼 카라'?'목선을 따라 퍼 카라를 덧댔습니다.':part+' 디테일이 들어갑니다.'));add((/카라|칼라/.test(part)?'카라를 분리하면 한결 간결한 목선으로 입을 수 있습니다.':'후드를 탈부착해 두 가지 모습으로 입을 수 있습니다.'))}
-  if(cp.pattern)add(cp.pattern.replace('무지','무지 디자인').replace(' 패턴',' 무늬')+'가 특징입니다.'.replace(/^가/,(cp.pattern==='무지'?'이':'가')));
-  if(cp.neck)add(cp.neck+'으로 목선을 마무리했습니다.');
-  if(cp.material)add('소재 포인트: '+cp.material+'입니다.');
-  for(const [re,line] of [[/집업|지퍼\s*여밈/,'앞면은 지퍼로 여미는 디자인입니다.'],[/케이블/,'케이블 짜임이 표면에 입체적인 무늬를 만듭니다.'],[/플리츠/,'주름을 잡아 플리츠 라인을 살렸습니다.'],[/자수/,'자수 디테일을 더했습니다.'],[/코듀로이/,'코듀로이 특유의 골이 디자인 포인트입니다.'],[/포켓/,'포켓을 더한 디자인입니다.']])if(re.test(title))add(line);
-  if(cleanColors.length>1)add(cleanColors.join(' · ')+' 두 색상으로 구성됩니다.'.replace('두 색상',cleanColors.length===2?'두 색상':'색상'));else if(cleanColors.length===1)add('색상은 '+cleanColors[0]+'입니다.');
-  if(cp.feature)add('디자인 특징: '+cp.feature);if(cp.style)add('스타일: '+cp.style);if(cp.season)add('시즌: '+cp.season);
-  if(brand||cat)add([brand,gender,cat].filter(Boolean).join(' ')+'입니다.');
-  // No invented benefits: leave the remaining draft lines blank for the seller.
-  while(para.length<4)para.push('');
-  return {brand,cat,cp,extras,name,desc:para.map(tidy).join('\n').slice(0,2450),review:!brand||!cat||name.split(/\s+/).length<6||name.split(/\s+/).length>7};
+  return {brand,cat,cp,extras,name,desc:retailCopy37(d,{title,brand,cat,cp,colors},override.choices),review:!brand||!cat||name.split(/\s+/).length<6||name.split(/\s+/).length>7};
 }
 function applyWear32(d){const variants=d.variants?.length?d.variants:[d];const keys=['신축성','두께감','촉감','비침','안감'];const issues=[];for(const [i,k] of keys.entries()){const sel=document.getElementById('fabricVal'+i);if(!sel)continue;const values=variants.map(p=>p.wear?.[k]||'');let v=values[0]&&values.every(x=>x===values[0])?values[0]:'';
  if(v==='부분 안감'&&!Array.from(sel.options).some(o=>o.value===v))sel.add(new Option(v,v));if(!Array.from(sel.options).some(o=>o.value===v))v='';sel.value=v;sel.dispatchEvent(new Event('change',{bubbles:true}));if(!v)issues.push(k)}const lab=document.getElementById('fabricVal4');if(lab){let hint=document.getElementById('wear32Hint');if(!hint){hint=document.createElement('p');hint.id='wear32Hint';lab.closest('fieldset')?.append(hint)}hint.textContent=issues.length?'미확인 또는 색상별 값이 다름: '+issues.join(', ')+' (자동 강조 안 함)':'LF몰 착용 정보 5개 항목 반영 완료'}}
@@ -133,9 +139,10 @@ function applyCopy3(d){
   const initial=lfCopyFacts3(d);if(initial.brand){set('brand',initial.brand);set('sBrand',initial.brand)}set('prod',initial.cat);set('sName',initial.name);
   Object.entries(initial.cp).forEach(([k,v])=>{const e=document.querySelector('.lfCpGrid [data-cp="'+k+'"]');if(e&&[...e.options].some(o=>o.value===v)){e.value=v;emit(e)}});
   document.querySelectorAll('#lfCpChecks input[type=checkbox]').forEach(e=>{e.checked=initial.extras.includes(e.value)});
-  const cp=el('copy'),memo=el('sCopy');if(cp){cp.dataset.edited='1';set('copy',initial.desc);const existing=document.getElementById('lf33DraftHint');if(existing)existing.remove();const hint=document.createElement('small');hint.id='lf33DraftHint';hint.textContent=initial.desc.split('\n').filter(Boolean).length<4?'확인된 특징이 부족해 일부 줄을 비웠습니다. 직접 보완해 주세요.':'상품 정보에서 네 줄로 작성했습니다. 직접 수정할 수 있습니다.';cp.after(hint)}set('sCopy',initial.desc);
+  const cp=el('copy'),memo=el('sCopy');if(cp){cp.dataset.edited='1';set('copy',initial.desc);const existing=document.getElementById('lf33DraftHint');if(existing)existing.remove();const hint=document.createElement('small');hint.id='lf33DraftHint';hint.textContent=initial.desc.split('\n').filter(Boolean).length<4?'확인된 특징만 간결하게 담았습니다. 직접 수정할 수 있습니다.':'디자인·소재·디테일·코디를 담은 판매용 초안입니다.';cp.after(hint)}set('sCopy',initial.desc);
   if(cp&&memo&&!cp.dataset.lfCopySync){cp.dataset.lfCopySync='1';cp.addEventListener('input',()=>{memo.value=cp.value});memo.addEventListener('input',()=>{if(cp.value!==memo.value){cp.value=memo.value;cp.dataset.edited='1';cp.dispatchEvent(new Event('input',{bubbles:true}))}})}
   const nm=el('sName');if(nm){let tools=el('lfTitleTools3');if(!tools){tools=document.createElement('div');tools.id='lfTitleTools3';nm.closest('label')?.insertAdjacentElement('afterend',tools)}tools.replaceChildren();tools.style.cssText='font-size:12px;color:#45584d;align-self:end;padding-bottom:8px';const msg=document.createElement('span'),btn=document.createElement('button');btn.type='button';btn.textContent='상품명 다시 제안';btn.onclick=()=>{const f=lfCopyFacts3(d,{brand:el('sBrand')?.value||el('brand')?.value,category:el('prod')?.value});set('sName',f.name);report(f)};const report=f=>{msg.textContent=f.review?'브랜드·상품 종류 또는 확인된 단어가 부족합니다. 제안명을 직접 보완해 주세요. ':'브랜드 첫 단어 · 상품 종류 마지막 단어. 필요하면 직접 수정하세요. '};report(initial);tools.append(msg,btn)}
+  const regen=document.getElementById('lfMakeCopy');if(regen){regen.textContent='선택한 특징으로 판매 설명 다시 쓰기';regen.onclick=()=>{const choices={};choices.extra=Array.from(document.querySelectorAll('#lfCpChecks input:checked'),e=>e.value);document.querySelectorAll('.lfCpGrid [data-cp]').forEach(s=>{if(s.value&&s.value!=='해당 없음')choices[s.dataset.cp]=s.value});if(cp.value.trim()&&cp.value!==regen.dataset.last&&!confirm('직접 수정한 설명을 새 초안으로 바꿀까요?'))return;const fresh=lfCopyFacts3(d,{brand:el('sBrand')?.value,category:el('prod')?.value,choices}).desc;set('copy',fresh);set('sCopy',fresh);regen.dataset.last=fresh};regen.dataset.last=initial.desc;const alt=el('draft');if(alt)alt.onclick=()=>regen.click();const help=regen.nextElementSibling;if(help?.tagName==='SMALL')help.textContent='확인된 상품 정보로 최대 네 문장을 작성합니다.'}
   return initial;
 }
 
