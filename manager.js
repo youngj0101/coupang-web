@@ -130,6 +130,15 @@
       .slice(0, 20);
   }
 
+  function sanitizeProductTitle(raw) {
+    return String(raw || "")
+      .replace(/\s+/g, " ")
+      .replace(/나를\s*나답게\s*LFmall\.com/gi, "")
+      .replace(/\s*\|\s*LF몰.*$/i, "")
+      .replace(/^\s*[-–|·]+\s*|\s*[-–|·]+\s*$/g, "")
+      .trim();
+  }
+
   function buildSeoTagsFromFields({ name, lfName, code, material, options }) {
     const baseText = `${name || ""} ${lfName || ""} ${material || ""} ${(options || []).map(o => `${o.color || ""} ${o.size || ""}`).join(" ")}`;
     const items = baseText.match(/(숏패딩|롱패딩|패딩|점퍼|자켓|재킷|코트|가디건|니트|스웨터|맨투맨|후드|셔츠|티셔츠|팬츠|바지|슬랙스|데님|카라)/g) || [];
@@ -246,6 +255,7 @@
 
     document.querySelectorAll("div, footer, nav, section, aside, label, h1, h2, h3, h4, p, b, strong, small, span, button, select").forEach(el => {
       if (el.id?.startsWith("cp") || el.closest("#cpTopBar, #cpSidebar, #cpEditModal, #cpLoginOverlay, #cpStudioRegSection, #cpListView")) return;
+      if (el.closest("#szRows") || el.querySelector("#szRows")) return;
       if (el.querySelector("#lfReceived, #btnMakeAll, .cp-card")) return;
 
       const txt = (el.innerText || el.textContent || "").replace(/\s+/g, " ").trim();
@@ -488,23 +498,16 @@
 
     const canvases = [...document.querySelectorAll("canvas")].filter(c => c.width > 100 && c.height > 100);
     if (canvases.length) {
-      try { thumbUrl = canvases[0].toDataURL("image/jpeg", 0.85); } catch {}
+      try {
+        const u0 = canvases[0].toDataURL("image/jpeg", 0.85);
+        if (u0 && !u0.includes("github.io")) thumbUrl = u0;
+      } catch {}
       if (canvases.length > 1) {
-        try { detailImgUrl = canvases[canvases.length - 1].toDataURL("image/jpeg", 0.85); } catch {}
+        try {
+          const u1 = canvases[canvases.length - 1].toDataURL("image/jpeg", 0.85);
+          if (u1 && !u1.includes("github.io")) detailImgUrl = u1;
+        } catch {}
       }
-    }
-
-    const studioImgs = [...document.querySelectorAll("main img")].filter(img => {
-      if (img.closest("#cpStudioRegSection")) return false;
-      const src = img.currentSrc || img.src || "";
-      return src.startsWith("data:image") || src.startsWith("blob:") || /result|preview|detail|thumb|make/i.test(src);
-    });
-
-    if (!thumbUrl && studioImgs[0]) {
-      thumbUrl = studioImgs[0].currentSrc || studioImgs[0].src || "";
-    }
-    if (!detailImgUrl && studioImgs.length > 1) {
-      detailImgUrl = studioImgs[studioImgs.length - 1].currentSrc || studioImgs[studioImgs.length - 1].src || "";
     }
 
     return { thumbUrl, detailImgUrl };
@@ -1203,7 +1206,6 @@
     const code = document.querySelector('input[placeholder="DMSW6D301BK"]')?.value.trim() || "";
     const kind = document.querySelector('input[placeholder="긴팔 카라 니트"]')?.value.trim() || "";
     const studioCopy = document.getElementById("copy")?.value.trim() || "";
-    const firstImg = document.querySelector("#lfReceived img")?.src || "";
     const generatedAssets = readGeneratedStudioAssets();
 
     let storageData = bridgeMakerData || {};
@@ -1217,7 +1219,8 @@
       } catch {}
     }
 
-    const defaultName = [brand, kind, code].filter(Boolean).join(" ") || storageData.lfName || storageData.title || "";
+    const cleanLfName = sanitizeProductTitle(storageData.lfName || storageData.title || "");
+    const defaultName = [brand, kind, code].filter(Boolean).join(" ") || cleanLfName || "";
     const collectedOptions = (Array.isArray(storageData.options) && storageData.options.length)
       ? storageData.options.map(o => ({ ...o, stock: clampStock(o.stock ?? MAX_STOCK) }))
       : (code ? [{ color: "", code, size: "", stock: MAX_STOCK }] : []);
@@ -1237,20 +1240,24 @@
       ? storageData.seoTags
       : buildSeoTagsFromFields({
           name: defaultName,
-          lfName: storageData.lfName || storageData.title || "",
+          lfName: cleanLfName,
           code: collectedOptions[0]?.code || code,
           material: mergedNotice.material || "",
           options: collectedOptions
         });
 
+    const firstHttpThumb =
+      (storageData.thumbUrl && !storageData.thumbUrl.startsWith("blob:") ? storageData.thumbUrl : "") ||
+      (Array.isArray(storageData.items) ? (storageData.items.find(i => i?.url && !i.url.startsWith("blob:"))?.url || "") : "");
+
     return {
       brand,
       code,
       defaultName,
-      lfName: storageData.lfName || storageData.title || "",
+      lfName: cleanLfName,
       sourceUrl: storageData.url || "",
-      thumbUrl: generatedAssets.thumbUrl || storageData.thumbUrl || firstImg,
-      detailImgUrl: generatedAssets.detailImgUrl || "",
+      thumbUrl: firstHttpThumb || generatedAssets.thumbUrl || "",
+      detailImgUrl: generatedAssets.detailImgUrl || firstHttpThumb || "",
       discountPrice: Number(storageData.discountPrice) || 0,
       regularPrice: Number(storageData.regularPrice) || 0,
       options: collectedOptions,
@@ -1808,7 +1815,7 @@
 
   async function saveFromStudioCombined() {
     const ext = await readStudioAndExtensionData();
-    const panelName = document.getElementById("sName").value.trim();
+    const panelName = sanitizeProductTitle(document.getElementById("sName").value);
     const fullName = panelName || ext.defaultName;
     if (!fullName) return alert("상품명을 입력하거나 제작실에 상품 정보를 먼저 입력해 주세요.");
 
@@ -1834,8 +1841,10 @@
     const panelCopy = document.getElementById("sCopy").value.trim();
     const finalCopy = panelCopy || ext.studioCopy;
 
-    const thumbVal = document.getElementById("sThumbUrl").value.trim() || ext.thumbUrl;
-    const detailVal = document.getElementById("sDetailImgUrl").value.trim() || ext.detailImgUrl || thumbVal;
+    const rawThumb = document.getElementById("sThumbUrl").value.trim();
+    const thumbVal = (rawThumb && !rawThumb.startsWith("blob:")) ? rawThumb : ext.thumbUrl;
+    const rawDetail = document.getElementById("sDetailImgUrl").value.trim();
+    const detailVal = (rawDetail && !rawDetail.startsWith("blob:")) ? rawDetail : (ext.detailImgUrl || thumbVal);
     const rawTagsVal = document.getElementById("sTags").value.trim() || (ext.seoTags || []).join(", ");
 
     try {
@@ -1844,7 +1853,7 @@
         brand: document.getElementById("sBrand").value.trim() || ext.brand,
         category: studioCatCtrl.getPath(),
         name: fullName,
-        lfName: document.getElementById("sLfName").value.trim() || ext.lfName,
+        lfName: sanitizeProductTitle(document.getElementById("sLfName").value) || ext.lfName,
         code: finalOptions[0]?.code || ext.code,
         options: finalOptions,
         notice: finalNotice,
