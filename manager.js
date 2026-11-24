@@ -11,7 +11,7 @@
 
   const DEFAULT_FEE_RATE = 11.55;
   const DEFAULT_SHIPPING = 0;
-  const DEFAULT_TARGET_MARGIN = 20;
+
   const MAX_STOCK = 10;
 
   const CATEGORY_TREE = {
@@ -68,7 +68,7 @@
   let initialScrollLocked = false;
 
 function route32(url){const u=new URL(url),v=u.searchParams.get('view'),id=u.searchParams.get('make');const view=['collect','studio','library','posted','stock'].includes(v)?v:id?'studio':'collect';return {view:view==='studio'&&!id?'collect':view,id:view==='studio'?id:null}}
-function path32(url,view,id){const u=new URL(url);u.searchParams.set('view',view);if(view==='studio'&&id)u.searchParams.set('make',id);else u.searchParams.delete('make');return u.href}
+function path32(url,view,id){const u=new URL(url);if(view!=='studio'||u.searchParams.get('make')!==id)u.searchParams.delete('lf35');u.searchParams.set('view',view);if(view==='studio'&&id)u.searchParams.set('make',id);else u.searchParams.delete('make');return u.href}
 const entry32=route32(location.href);let archive=[], connected=false,pendingId=entry32.id,mounting=false;
   function loadAuth() {
     try { return JSON.parse(localStorage.getItem(AUTH_STORAGE_KEY)) || null; }
@@ -130,29 +130,32 @@ const entry32=route32(location.href);let archive=[], connected=false,pendingId=e
     for (const tag of (Array.isArray(input) ? input : [input]).flatMap(x => String(x ?? '').normalize('NFKC').split(/[,/;\n]+/))) {
       const text = tag.trim().replace(/^#+/, '').trim();
       const raw = norm(text), k = key(text);
+      if(window.LF36Text?.banned(text)||/[!★☆<>\[\]{}@|?]/u.test(text))continue;
       if (!k || /[%％]|퍼센트|백분율|수량|재고|품절|\d\s*(?:프로|퍼|개|매|종|장|벌|켤레|팩|세트|입|묶음|컬러|칼라|색상|가지|사이즈|pcs?|ea|pack|set|colors?|colours?|sizes?)|\d\s*[+×x]\s*\d|^(?:\d+(?:[.,]\d+)?|컬러|칼라|색상|사이즈|포함|pcs?|ea|colors?|sizes?)$/i.test(raw) || /(?:한|두|세|네)\s*(?:벌|켤레|가지|색상|컬러)(?:$|구성)/.test(raw)) continue;
       // Do not mistake an SKU ending in a two-letter option code for a colour tag.
       const tokens = raw.match(/[a-z]+|[가-힣]+|\d+/g) || [];
       const colour = [...colorWords].some(c => k === c || (/^[a-z]+$/.test(c) ? (!modelCodes.has(k) && tokens.includes(c)) || (c.length >= 3 && /[가-힣]/.test(k) && k.includes(c)) : c.length >= 2 && k.replace(/블루[종손]/g, '').includes(c)));
       if (colour) continue;
       const semantic = genderKey(aliases(k));
+      const sorted=raw.split(/\s+/).map(t=>genderKey(aliases(key(t)))).sort().join(' ');
+      if(seen.has('tokens:'+sorted))continue;seen.add('tokens:'+sorted);
       if (!seen.has(semantic)) { seen.add(semantic); rows.push({ text, semantic }); }
     }
     // Prefer the qualified variant when present; men's and women's variants remain distinct.
     return rows.filter(({semantic:s}) => !seen.has('남성'+s) && !seen.has('여성'+s)).slice(0, limit).map(r => r.text);
   }
   function listingFields(p) {
-    return { ...p, notice: { ...p.notice, size: NOTICE_SIZE_TEXT }, tags: parseTags(p.tags, p).join('/') };
+    return { ...p, notice: { ...p.notice, size: NOTICE_SIZE_TEXT }, tags: parseTags(p.tags, p).join(', ') };
   }
-  function buildSeoTagsFromFields({ name, lfName, code, material, options, colors, notice }) {
-    const title = [name, lfName].filter(Boolean).join(' ').normalize('NFKC');
-    const items = [...new Set(title.match(/숏패딩|롱패딩|패딩|점퍼|자켓|재킷|코트|가디건|카디건|니트|스웨터|맨투맨|후드|티셔츠|셔츠|팬츠|바지|슬랙스|데님|카라/g) || [])];
-    const fabrics = [...new Set(String(material || '').match(/캐시미어|메리노|코튼|린넨|폴리에스터|나일론|레이온|아크릴|실크|구스|덕다운|울|모|면/g) || [])];
-    const gender = title.match(/남성|남자|여성|여자/)?.[0];
-    const words = title.replace(/[^가-힣A-Za-z0-9%+\s.-]/g, ' ').split(/\s+/).filter(w => w.length >= 2 && w.length <= 20 && !/^(남성|여성|남자|여자)$/.test(w));
-    const candidates = [...(gender ? items.map(i => gender+i) : []), ...items, ...fabrics.flatMap(f => items.slice(0, 2).map(i => f+i)), ...fabrics.filter(f => f.length >= 2), ...words, code];
-    return parseTags(candidates, { code, options, colors, notice });
+  function tagCountHint36(n){return n<15?n+'개 · '+(15-n)+'개 부족: 실제 소재·형태·특장점과 관련된 태그를 직접 추가하세요.':n>20?n+'개 · '+(n-20)+'개 초과: 20개 이하로 줄여 주세요.':n+'개 · 저장 가능';}
+  function validatedListing36(p){
+    if(!window.LF36Text)throw Error('브리지와 관리 파일을 함께 교체해 주세요.');
+    const error=window.LF36Text.checkTitle(p.name);if(error)throw Error(error);
+    const tags=parseTags(p.tags,p,Infinity);if(tags.length<15||tags.length>20)throw Error('검색 태그 '+tagCountHint36(tags.length));
+    return listingFields({...p,tags:tags.join(', ')});
   }
+  window.LF36NormalizeTags=(input,product)=>parseTags(input,product,Infinity);
+  window.LF36ValidateListing=validatedListing36;
 
   function buildCategoryPath(mainCat, subCat) {
     if (!mainCat || !subCat) return "";
@@ -174,32 +177,40 @@ const entry32=route32(location.href);let archive=[], connected=false,pendingId=e
     return { main: "", sub: "" };
   }
 
-  function calcMargin(cost, salePrice, feeRate = DEFAULT_FEE_RATE, shipping = DEFAULT_SHIPPING) {
-    const c = parseNum(cost);
-    const s = parseNum(salePrice);
-    const f = Number(feeRate) || 0;
-    const sh = parseNum(shipping);
-    const fee = Math.round(s * (f / 100));
-    const profit = s - c - fee - sh;
-    const rate = s > 0 ? (profit / s) * 100 : 0;
-    const vat = profit > 0 ? Math.round(profit / 11) : 0;
-    const profitAfterVat = profit - vat;
-    const rateAfterVat = s > 0 ? (profitAfterVat / s) * 100 : 0;
-    return { fee, profit, rate, vat, profitAfterVat, rateAfterVat };
+  // Strict whole won inputs. Unknown is null; never strip a sign or decimal and fabricate a price.
+  function won36(value, allowZero=false) {
+    const t=String(value??'').trim();if(!/^(?:\d+|\d{1,3}(?:,\d{3})+)$/.test(t))return null;
+    const n=Number(t.replaceAll(',',''));return Number.isSafeInteger(n)&&n>=(allowZero?0:1)?n:null;
   }
-
-  function priceQuote(cost,targetMarginPct=DEFAULT_TARGET_MARGIN,feeRate=DEFAULT_FEE_RATE,shipping=DEFAULT_SHIPPING) {
-    const c=parseNum(cost), sh=parseNum(shipping), t=Number(targetMarginPct), f=Number(feeRate);
-    const denom=(100-f-t)/100;
-    if (!(c>0 && sh>=0 && Number.isFinite(t) && t>=0 && Number.isFinite(f) && f>=0 && denom>0) || [targetMarginPct,feeRate].some(x=>String(x).trim()==='')) return null;
-    const raw=(c+sh)/denom, sale=Math.round(raw/1000)*1000;
-    return Number.isSafeInteger(sale)&&sale>0 ? {c,sh,t,f,raw,sale,markup:c*(1+t/100)} : null;
+  function quote36(benefit,regular,terms={}){
+    const b=won36(benefit),r=won36(regular);
+    if(!b||!r||b>r||terms.confirmed!==true||terms.blocked||!Number.isSafeInteger(b*5))return null;
+    const raw=b*5/4, capped=raw>r, sale=capped?r-5000:Math.round(raw);
+    return Number.isSafeInteger(sale)&&sale>0?{raw,capped,sale}:null;
   }
-  function priceTerms(p) {const v=k=>document.getElementById(p+k).value;return {fee:v('FeeRate'),ship:v('Shipping'),target:v('TargetMargin')};}
-  function restorePriceTerms(p,terms={}) {const set=(k,v)=>document.getElementById(p+k).value=v;set('FeeRate',terms?.fee??DEFAULT_FEE_RATE);set('Shipping',terms?.ship??DEFAULT_SHIPPING);set('TargetMargin',terms?.target??DEFAULT_TARGET_MARGIN);}
-  function calcTargetSalePrice(cost,target=DEFAULT_TARGET_MARGIN,fee=DEFAULT_FEE_RATE,shipping=DEFAULT_SHIPPING) {
-    return priceQuote(cost,target,fee,shipping)?.sale || 0;
+  function profit36(sale,cost,terms){
+    const s=won36(sale),c=won36(cost),sh=won36(terms.ship,true),o=won36(terms.other,true);
+    const ft=String(terms.fee??'').trim(),f=Number(ft);if(!s||!c||sh===null||o===null||!/^\d+(?:\.\d{1,2})?$/.test(ft)||f<0||f>100)return null;
+    // Integer basis points, nearest won, half up. Avoid binary midpoint error.
+    const bp=Math.round(f*100);if(!Number.isSafeInteger(s*bp+5000))return null;
+    const fee=Math.floor((s*bp+5000)/10000),profit=s-c-fee-sh-o;
+    return {fee,profit,rate:profit/s*100};
   }
+  function summary36(sale,options,terms={}){
+    const groups=new Map();for(const o of (options?.length?options:[{}])){
+      const label=[o.color,o.code].filter(Boolean).join(' / ')||'공통',explicit=String(o.actualCost??'').trim();
+      const cost=won36(explicit===''?terms.actualCost:explicit),k=JSON.stringify([label,cost]);if(groups.has(k))continue;
+      const r=profit36(sale,cost,terms);groups.set(k,label+' · 실제 원가 '+(cost?formatWon(cost):'미확인')+' · '+(r?(r.profit<0?'손실 경고 · ':'')+'예상 순수익 '+formatWon(r.profit)+' ('+r.rate.toFixed(2)+'%) · 수수료 '+formatWon(r.fee):'예상 순수익·이익률 미확인'));}
+    return [...groups.values()];
+  }
+  function evidence36(d){
+    const rows=d.variants?.length?d.variants:[d];const mixed=new Set(rows.map(v=>JSON.stringify([won36(v.discountPrice),won36(v.regularPrice)]))).size>1;
+    const conditional=rows.some(v=>v.priceCondition==='conditional');const blocked=mixed?'색상별 가격 차이/누락':conditional?'카드·쿠폰 등 조건부 가격':'';
+    return {blocked,confirmed:!blocked&&rows.every(v=>v.priceRequiresReview===false&&v.priceCondition==='unconditional'&&won36(v.discountPrice)&&won36(v.regularPrice))};
+  }
+  function priceTerms(p){const el=k=>document.getElementById(p+k);return {version:36,fee:el('FeeRate').value,ship:el('Shipping').value,other:el('Other').value,actualCost:el('ActualCost').value,confirmed:el('Verified').checked,blocked:el('Verified').dataset.blocked||'',mode:el('Price').dataset.mode||'manual'};}
+  function restorePriceTerms(p,terms={}){terms=terms||{};const el=k=>document.getElementById(p+k);el('FeeRate').value=terms.fee??DEFAULT_FEE_RATE;el('Shipping').value=terms.ship??DEFAULT_SHIPPING;el('Other').value=terms.other??0;el('ActualCost').value=terms.actualCost??'';el('Verified').checked=terms.confirmed===true;el('Verified').dataset.blocked=terms.blocked||'';el('Verified').disabled=!!terms.blocked;}
+  function exportPrices36(p){const t=p.priceTerms||{},auto=t.version===36&&t.mode==='auto';const sale=auto?quote36(p.discountPrice,p.regularPrice,t)?.sale:won36(p.price);const regular=won36(p.regularPrice);if(!sale||!regular)throw Error((p.name||p.code||'상품')+': 판매가 또는 정가 미확인. 재고 수정에서 확인 후 내보내세요.');return {sale,regular};}
 
   function loadSheetJS() {
     return new Promise((resolve, reject) => {
@@ -899,7 +910,7 @@ const entry32=route32(location.href);let archive=[], connected=false,pendingId=e
           <thead>
             <tr>
               <th style="width:22%;">색상</th>
-              <th style="width:32%;">상품 코드 (품번)</th>
+              <th>실제 옵션 품번</th><th>실제 매입원가 (원)</th>
               <th style="width:20%;">사이즈</th>
               <th style="width:18%;">재고 (최대 10)</th>
               <th style="width:8%;"></th>
@@ -910,9 +921,9 @@ const entry32=route32(location.href);let archive=[], connected=false,pendingId=e
       </div>
 
       <label class="cp-field-label">
-        검색 태그 (최대 20개, 쉼표 또는 / 구분)
-        <span id="${p}TagCount" class="cp-tag-count">0 / 20개</span>
-        <input id="${p}Tags" type="text" placeholder="예: 남성니트, 카라니트, 출근룩, 봄니트, 데일리룩">
+        검색 태그 (제작 기준 15~20개, 쉼표 구분 · 실제 근거가 있는 말만 입력)
+        <span id="${p}TagCount" class="cp-tag-count">0개 · 15개 부족</span>
+        <input id="${p}Tags" type="text" placeholder="상품에서 직접 확인한 소재, 형태, 디테일 등을 쉼표로 구분">
       </label>
 
       <div class="cp-grid-3">
@@ -922,21 +933,23 @@ const entry32=route32(location.href);let archive=[], connected=false,pendingId=e
       </div>
 
       <div class="cp-grid-3">
-        <label class="cp-field-label">최대혜택가 / 소싱가 (원)<input id="${p}DiscountPrice" class="cp-money-input" type="text" inputmode="numeric" placeholder="예: 69,000"></label>
+        <label class="cp-field-label">LF 최대혜택가 (실제 매입 원가 아님)<input id="${p}DiscountPrice" class="cp-money-input" type="text" inputmode="numeric" placeholder="예: 69,000"></label>
         <label class="cp-field-label">쿠팡 판매가 (자동 계산 또는 직접 입력)<input id="${p}Price" class="cp-money-input" type="text" inputmode="numeric" placeholder="자동 계산됨"></label>
         <label class="cp-field-label">정가 (할인율기준가/원)<input id="${p}RegularPrice" class="cp-money-input" type="text" inputmode="numeric" placeholder="예: 129,000"></label>
       </div>
 
       <div class="cp-margin-box">
-        <div class="cp-margin-title">🧮 판매가 기준 목표 마진 계산 (수수료·배송비 차감 / 1,000원 단위 반올림)</div>
+        <div class="cp-margin-title">판매가 = 확인된 LF 최대혜택가 × 1.25. 정가를 초과할 때만 정가 − 5,000원 (초과 판정 후 1원 반올림)</div>
         <div class="cp-margin-row">
           <label class="cp-field-label">수수료율 (%)<input id="${p}FeeRate" type="number" step="0.01" value="${DEFAULT_FEE_RATE}"></label>
           <label class="cp-field-label">배송비 부담 (원)<input id="${p}Shipping" class="cp-money-input" type="text" inputmode="numeric" value="${DEFAULT_SHIPPING}"></label>
-          <label class="cp-field-label">목표 마진 / 판매가 (%)<input id="${p}TargetMargin" type="number" min="0" step="0.01" value="${DEFAULT_TARGET_MARGIN}"></label>
+          <label class="cp-field-label">기타비 (원)<input id="${p}Other" class="cp-money-input" inputmode="numeric" value="0"></label>
+          <label class="cp-field-label">공통 실제 매입원가 (개별 옵션 원가 우선)<input id="${p}ActualCost" class="cp-money-input" inputmode="numeric" placeholder="미확인"></label>
+          <label class="cp-field-label"><input id="${p}Verified" type="checkbox"> LF 원본에서 조건 없는 정가·최대혜택가, 전 색상 동일 확인</label>
           <button type="button" id="${p}BtnCalcPrice" class="cp-calc-btn">판매가 자동 계산</button>
         </div>
         <div id="${p}MarginResult" class="cp-margin-result">
-          <span>소싱가를 입력하면 두 계산 기준을 비교합니다.</span>
+          <span>원가·판매가가 확인되면 이익을 표시합니다.</span>
         </div>
       </div>
 
@@ -1016,7 +1029,7 @@ const entry32=route32(location.href);let archive=[], connected=false,pendingId=e
 
   document.addEventListener("input", e => {
     if (e.target.classList.contains("cp-money-input")) {
-      e.target.value = formatComma(e.target.value);
+      if(won36(e.target.value,true)!==null)e.target.value = formatComma(e.target.value);
     }
     if (e.target.classList.contains("opt-stock")) {
       const clamped = clampStock(e.target.value);
@@ -1072,16 +1085,23 @@ const entry32=route32(location.href);let archive=[], connected=false,pendingId=e
   const studioCatCtrl = setupCategorySelects("s");
   const editCatCtrl = setupCategorySelects("e");
 
+  // LF36: display helpers are read-only. In particular legacy p.cost is not a purchase invoice.
+  function wonOpt36(v){const s=String(v??'').trim();if(!/^(?:[1-9]\d*|[1-9]\d{0,2}(?:,\d{3})+)$/.test(s))return null;const n=Number(s.replaceAll(',',''));return Number.isSafeInteger(n)?n:null}
+  function valsOpt36(values){const map=new Map();for(const value of values){const text=String(value??'').normalize('NFKC').replace(/\s+/g,' ').trim(),key=text.toLocaleLowerCase('ko-KR');if(!text||/^(?:미확인|확인 필요|색상 미확인|사이즈 미확인|-)$/.test(text)||map.has(key))continue;map.set(key,text)}return [...map.values()]}
+  function rowsOpt36(p){const opts=Array.isArray(p.options)?p.options:[];const colors=valsOpt36([...opts.map(o=>o.color),...(Array.isArray(p.colors)?p.colors:[])]),sizes=valsOpt36(opts.map(o=>o.size));const rows=[],seen=new Set();for(const o of opts){const color=String(o.color||'').trim(),size=String(o.size||'').trim(),code=String(o.code||'').trim(),lf=String(o.lfColorCode||'').trim(),cost=wonOpt36(String(o.actualCost??'').trim()===''?p.priceTerms?.actualCost:o.actualCost),benefit=wonOpt36(o.lfBenefitPrice);const row=[color||'미확인',size||'미확인',lf||'미확인',(code||'미확인')+(code&&o.codeKind==='color'?' (색상 품번)':''),cost===null?'미확인':String(cost),benefit===null?'미확인':String(benefit)+(o.lfBenefitReview!==false?' (확인 필요)':'')];const k=JSON.stringify(row);if(!seen.has(k)){rows.push(row);seen.add(k)}}return {colors,sizes,tags:valsOpt36(parseTags(p.tags,p)),rows}}
+  function copyPanel36(p){const model=rowsOpt36(p),wrap=node('details'),body=node('div');wrap.append(node('summary','복사용 등록 정보'),body);const group=(key,value)=>{const row=node('div',null,'lf32tools'),button=libButton(key+' 복사',()=>navigator.clipboard.writeText(value));button.disabled=!value;row.append(node('strong',key),node('span',value||'미확인'),button);body.append(row)};for(const [label,values] of [['색상 전체',model.colors],['사이즈 전체',model.sizes],['검색 태그',model.tags]])group(label,values.join(', '));const head=['색상','사이즈','LF 색상 품번','옵션 품번','실제 매입원가(원)','LF 최대혜택가(원)'];const rows=model.rows;if(rows.length){body.append(table32(head,rows));const line=row=>head.map((h,i)=>h+' '+row[i]).join(' / ');body.append(libButton('모든 색상 품번·원가 복사',()=>navigator.clipboard.writeText(rows.map(line).join('\n'))));for(const color of new Set(rows.map(r=>r[0])))body.append(libButton(color+' 품번·원가 복사',()=>navigator.clipboard.writeText(rows.filter(r=>r[0]===color).map(line).join('\n'))))}else body.append(node('p','저장된 옵션 품번·원가가 없습니다.'));return wrap}
   function setupOptionTable(p) {
     const tbody = document.getElementById(`${p}OptBody`);
     function addRow(opt = { color: "", code: "", size: "", stock: 0 }) {
       const safeStock = clampStock(opt.stock ?? 0);
       const esc=v=>String(v??" ").trim().replace(/&/g,"&amp;").replace(/"/g,"&quot;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
       const tr = document.createElement("tr");
+      tr.lfOriginal36={...opt};
       tr.dataset.stockStatus=opt.stockStatus||"unknown";
       tr.innerHTML = `
         <td><input type="text" class="opt-color" placeholder="예: 블랙" value="${esc(opt.color)}"></td>
         <td><input type="text" class="opt-code" placeholder="예: DMSW6D301BK" value="${esc(opt.code)}"></td>
+        <td><input class="opt-actual-cost" type="text" inputmode="numeric" aria-label="옵션 실제 매입원가 (원)" placeholder="미확인" value="${esc(wonOpt36(opt.actualCost))}"></td>
         <td><input type="text" class="opt-size" placeholder="예: 100" value="${esc(opt.size)}"></td>
         <td><input type="number" class="opt-stock" min="0" max="${MAX_STOCK}" value="${safeStock}"></td>
         <td><button type="button" class="cp-opt-del-btn">×</button></td>
@@ -1090,6 +1110,7 @@ const entry32=route32(location.href);let archive=[], connected=false,pendingId=e
         if (tbody.children.length > 1) tr.remove();
         else tr.querySelectorAll("input").forEach(i => (i.value = i.classList.contains("opt-stock") ? 0 : ""));
       });
+      const costInput=tr.querySelector('.opt-actual-cost');for(const selector of ['.opt-color','.opt-code'])tr.querySelector(selector).addEventListener('input',()=>{costInput.value='';costInput.setCustomValidity('')});costInput.oninput=()=>costInput.setCustomValidity(costInput.value.trim()&&!wonOpt36(costInput.value)?'실제 매입원가는 양의 정수 원 단위로 입력하세요.':'');
       tr.querySelector(".opt-stock").oninput=()=>tr.dataset.stockStatus="manual";
       tbody.appendChild(tr);
     }
@@ -1097,7 +1118,7 @@ const entry32=route32(location.href);let archive=[], connected=false,pendingId=e
       const last = tbody.lastElementChild;
       addRow({
         color: last?.querySelector(".opt-color")?.value || "",
-        code: last?.querySelector(".opt-code")?.value || "",
+        code: "", // an added row has no verified SKU yet
         size: "",
         stock: 0
       });
@@ -1109,14 +1130,15 @@ const entry32=route32(location.href);let archive=[], connected=false,pendingId=e
         if (Array.isArray(list) && list.length) list.forEach(o => addRow(o));
         else addRow();
       },
-      getOptions() {
-        return [...tbody.querySelectorAll("tr")].map(tr => ({
+      getOptions(strict=false) {
+        return [...tbody.querySelectorAll("tr")].map(tr => {const old=tr.lfOriginal36||{},cost=tr.querySelector('.opt-actual-cost');if(strict&&cost.value.trim()&&!wonOpt36(cost.value))throw Error('실제 매입원가는 양의 정수 원 단위로 입력하세요.');const same=String(old.color||'').trim()===tr.querySelector('.opt-color').value.trim()&&String(old.code||'').trim()===tr.querySelector('.opt-code').value.trim();return {
+          ...(same?old:{}),actualCost:wonOpt36(cost.value),
           color: tr.querySelector(".opt-color").value.trim(),
           code: tr.querySelector(".opt-code").value.trim(),
           size: tr.querySelector(".opt-size").value.trim(),
           stockStatus:tr.dataset.stockStatus||"unknown",
           stock: clampStock(tr.querySelector(".opt-stock").value)
-        })).filter(o => o.color || o.code || o.size);
+        }}).filter(o => o.color || o.code || o.size);
       }
     };
   }
@@ -1133,55 +1155,35 @@ const entry32=route32(location.href);let archive=[], connected=false,pendingId=e
     }
     function update() {
       const n = parseTags(input.value, context(), Infinity).length;
-      badge.textContent = n > 20 ? '20 / 20개 (초과분 제외)' : n+' / 20개';
-      badge.classList.toggle('over', n > 20);
+      badge.textContent = tagCountHint36(n);
+      badge.classList.toggle('over', n < 15 || n > 20);
     }
     input.addEventListener('input', update);
-    input.addEventListener('blur', () => { input.value = parseTags(input.value, context()).join(', '); update(); });
+    input.addEventListener('blur', () => { input.value = parseTags(input.value, context(), Infinity).join(', '); update(); });
     return update;
   }
 
   const updateStudioTags = setupTagCounter("s");
   const updateEditTags = setupTagCounter("e");
 
-  function bindMarginCalc(p, autoFillOnCostChange = false) {
-    const costEl = document.getElementById(`${p}DiscountPrice`);
-    const priceEl = document.getElementById(`${p}Price`);
-    const feeEl = document.getElementById(`${p}FeeRate`);
-    const shipEl = document.getElementById(`${p}Shipping`);
-    const targetEl = document.getElementById(`${p}TargetMargin`);
-    const resEl = document.getElementById(`${p}MarginResult`);
-
-    let mode = autoFillOnCostChange ? 'auto' : 'manual';
-    let source = '직접 입력';
-    const quote = () => priceQuote(costEl.value,targetEl.value,feeEl.value,shipEl.value);
-    function applyTarget(force=false) {
-      const q=quote();
-      if (!q && force) alert('소싱가와 계산 조건을 확인하세요. 수수료율과 목표 마진율의 합은 100% 미만이어야 합니다.');
-      if (force && q) mode='auto';
-      if (mode==='auto') priceEl.value=q?formatComma(q.sale):'';
+  function bindMarginCalc(p,auto=false){
+    const el=k=>document.getElementById(p+k),sale=el('Price'),check=el('Verified'),benefit=el('DiscountPrice'),regular=el('RegularPrice');
+    const mode=m=>sale.dataset.mode=m,quote=()=>quote36(benefit.value,regular.value,priceTerms(p));mode(auto?'auto':'manual');
+    function update(){const t=priceTerms(p),q=quote();const opts=(p==='s'?studioOptCtrl:editOptCtrl).getOptions();
+      const rows=[q?'공식 결과 '+formatWon(q.sale)+(q.capped?' (정가 초과, 정가 − 5,000원)':' (혜택가 × 1.25)'):'자동 계산 보류: '+(t.blocked||'유효한 정가·혜택가와 무조건 적용 확인이 필요합니다.'),
+        '적용 판매가 '+(won36(sale.value)?formatWon(won36(sale.value)):'미확인')+' · '+(t.mode==='auto'?'자동':'직접 입력·저장값'),...summary36(sale.value,opts,t),
+        '순수익 = 적용 판매가 − 실제 매입원가 − 판매수수료(원 단위 반올림) − 배송비 − 기타비. 이익률 = 순수익 ÷ 적용 판매가. 부가세 정산·소득세·미입력 비용 제외.'];
+      el('MarginResult').replaceChildren(...rows.map(s=>{const n=document.createElement('div');n.style.flexBasis='100%';n.textContent=s;if(s.includes('손실 경고'))n.style.color='#b91c1c';return n}));
     }
-    function update() {
-      const q=quote(), sale=parseNum(priceEl.value), rows=['원가 근거: '+source];
-      if(q){
-        const base=calcMargin(q.c,Math.round(q.markup),q.f,q.sh);
-        rows.push('판매가 기준: ('+formatWon(q.c)+' + 배송비 '+formatWon(q.sh)+') ÷ (1 − 수수료 '+q.f+'% − 목표 '+q.t+'%) = '+formatWon(Math.round(q.raw))+' → 추천 '+formatWon(q.sale),
-          '비교만: 원가에 '+q.t+'% 가산 = '+formatWon(Math.round(q.markup))+' (수수료·배송비 차감 후 판매가 대비 '+base.rate.toFixed(2)+'%)');
-      } else rows.push(parseNum(costEl.value)?'계산 불가: 수수료율·목표율은 0 이상, 합계는 100% 미만이어야 합니다.':'LF 최대혜택가 또는 실제 매입 원가를 확인해 입력하세요.');
-      if(sale>0 && parseNum(costEl.value)>0 && feeEl.value!=='' && Number(feeEl.value)>=0 && Number(feeEl.value)<100){
-        const r=calcMargin(costEl.value,sale,feeEl.value,shipEl.value);
-        rows.push('적용 판매가 '+formatWon(sale)+' ('+(mode==='auto'?'자동':'직접 입력·저장값')+') · 수수료 '+formatWon(r.fee)+' · 배송비 '+formatWon(parseNum(shipEl.value)),
-          '예상 이익(부가세 차감 전) '+formatWon(r.profit)+' / 판매가 = '+r.rate.toFixed(2)+'% · 추정 부가세 '+formatWon(r.vat)+' 차감 후 '+formatWon(r.profitAfterVat)+' ('+r.rateAfterVat.toFixed(2)+'%)');
-      }
-      resEl.replaceChildren(...rows.map(row=>{const s=document.createElement('div');s.style.flexBasis='100%';s.textContent=row;return s}));
-    }
-    costEl.addEventListener('input',()=>{source='직접 입력';applyTarget();update()});
-    [feeEl,shipEl,targetEl].forEach(el=>el.addEventListener('input',()=>{applyTarget();update()}));
-    priceEl.addEventListener('input',()=>{mode='manual';update()});
-    document.getElementById(p+'BtnCalcPrice').addEventListener('click',()=>{applyTarget(true);update()});
-    function loadCost(value,note,replaceSale) {source=note;costEl.value=value?formatComma(value):'';if(replaceSale)mode='auto';applyTarget();update()}
-    function reset(saved=false) { mode=saved?'manual':'auto';source=saved?'저장된 소싱가':'직접 입력';update() }
-    return {update,applyTarget,loadCost,reset};
+    function apply(){const q=quote();if(sale.dataset.mode==='auto')sale.value=q?formatComma(q.sale):'';update();}
+    function loadEvidence(d,replaceSale){const v=d.evidence;check.dataset.blocked=v.blocked;check.disabled=!!v.blocked;check.checked=v.confirmed;
+      benefit.value=!v.blocked&&d.discountPrice?formatComma(d.discountPrice):'';regular.value=!v.blocked&&d.regularPrice?formatComma(d.regularPrice):'';
+      if(replaceSale)mode('auto');apply();}
+    for(const x of [benefit,regular])x.addEventListener('input',()=>{check.checked=false;apply()});check.addEventListener('change',apply);
+    sale.addEventListener('input',()=>{mode('manual');update()});for(const k of ['ActualCost','FeeRate','Shipping','Other'])el(k).addEventListener('input',update);
+    el('OptBody').addEventListener('input',update);el('BtnCalcPrice').addEventListener('click',()=>{const q=quote();if(!q){update();return alert('자동 계산 보류. 원본에서 무조건 적용되는 공통 정가와 혜택가를 확인하세요.')}mode('auto');apply()});
+    function reset(saved=false,terms={}){mode(saved&&terms?.version===36&&terms?.mode==='auto'?'auto':saved?'manual':'auto');update()}
+    return {update,loadEvidence,reset};
   }
 
   const studioMarginCtrl = bindMarginCalc("s", true);
@@ -1196,9 +1198,10 @@ const entry32=route32(location.href);let archive=[], connected=false,pendingId=e
     const generatedAssets = readGeneratedStudioAssets();
 
     const storageData=bridgeMakerData||{};
-    const defaultName = storageData.lfName || storageData.title || [brand,kind,code].filter(Boolean).join(" ");
+    const proposal=window.LF36Suggest?.(storageData);
+    const defaultName=proposal?.name||'';
     const collectedOptions = (Array.isArray(storageData.options) && storageData.options.length)
-      ? storageData.options.map(o => ({ ...o, stock: clampStock(o.stock ?? 0) }))
+      ? storageData.options.map(o=>{const variants=(storageData.variants||[]).filter(v=>(v.colors||[]).includes(o.color)&&v.code===(o.lfColorCode||o.code)),v=variants.length===1?variants[0]:null;return {...o,lfColorCode:o.lfColorCode||v?.code||'',actualCost:wonOpt36(o.actualCost)??wonOpt36(v?.actualCost),lfBenefitPrice:wonOpt36(o.lfBenefitPrice)??wonOpt36(v?.discountPrice),lfBenefitReview:Object.hasOwn(o,'lfBenefitReview')?o.lfBenefitReview:v?.priceEvidenceVersion!==36||v?.priceRequiresReview!==false,stock:clampStock(o.stock??0)}})
       : (code ? [{ color: "", code, size: "", stock: 0, stockStatus: "unknown", requiresReview: true }] : []);
 
     const colorsFromOpts = [...new Set(collectedOptions.map(o => o.color).filter(Boolean))];
@@ -1214,11 +1217,7 @@ const entry32=route32(location.href);let archive=[], connected=false,pendingId=e
     };
 
     const tagContext = { options: collectedOptions, colors: storageData.colors, notice: mergedNotice };
-    const importedTags = parseTags(storageData.seoTags, tagContext);
-    const autoTags = importedTags.length ? importedTags : buildSeoTagsFromFields({
-      name: defaultName, lfName: storageData.lfName || storageData.title || "",
-      code: collectedOptions[0]?.code || code, material: mergedNotice.material || "", ...tagContext
-    });
+    const autoTags=parseTags(proposal?.tags||[],tagContext);
 
     return {
       brand,
@@ -1228,10 +1227,10 @@ const entry32=route32(location.href);let archive=[], connected=false,pendingId=e
       sourceUrl: storageData.url || "",
       thumbUrl: generatedAssets.thumbUrl || storageData.thumbUrl || firstImg,
       detailImgUrl: generatedAssets.detailImgUrl || "",
-      discountPrice: parseNum(storageData.discountPrice),
+      discountPrice: won36(storageData.discountPrice),
       priceRequiresReview: storageData.priceRequiresReview!==false,
-      priceMixed: new Set((storageData.variants||[]).map(v=>parseNum(v.discountPrice))).size>1,
-      regularPrice: Number(storageData.regularPrice) || 0,
+      evidence:evidence36(storageData),
+      regularPrice: won36(storageData.regularPrice),
       options: collectedOptions,
       colors: Array.isArray(storageData.colors) ? storageData.colors : colorsFromOpts,
       items: Array.isArray(storageData.items) ? storageData.items : [],
@@ -1264,16 +1263,12 @@ const entry32=route32(location.href);let archive=[], connected=false,pendingId=e
     if (d.detailImgUrl && (overwrite || !document.getElementById("sDetailImgUrl").value)) {
       document.getElementById("sDetailImgUrl").value = d.detailImgUrl;
     }
-    if (overwrite || (d.seoTags?.length && !document.getElementById("sTags").value)) {
-      document.getElementById("sTags").value = d.seoTags.join(", ");
+    const tagInput36=document.getElementById('sTags');
+    if (!showToast || !tagInput36.value || tagInput36.value===tagInput36.dataset.lfGenerated) {
+      tagInput36.value=tagInput36.dataset.lfGenerated=d.seoTags.join(', ');
       updateStudioTags();
     }
-    if (overwrite || !parseNum(document.getElementById('sDiscountPrice').value)) {
-      const unsure=d.priceRequiresReview || d.priceMixed;
-      const note=d.priceMixed?'색상별 소싱가가 다릅니다. 보관함 색상별 가격에서 확인 후 직접 입력하세요.':unsure?'수집값 미확인'+(d.discountPrice?' (대표 후보 '+formatWon(d.discountPrice)+')':'')+' · LF 원본 확인 후 직접 입력하세요.':'LF 수집 최대혜택가 ('+formatWon(d.discountPrice)+') · 실제 구매 조건 확인';
-      studioMarginCtrl.loadCost(unsure?0:d.discountPrice,note,overwrite || !parseNum(document.getElementById('sPrice').value));
-    }
-    if (overwrite || !parseNum(document.getElementById('sRegularPrice').value)) document.getElementById('sRegularPrice').value=d.regularPrice?formatComma(d.regularPrice):'';
+    if(overwrite || (!document.getElementById('sDiscountPrice').value && !document.getElementById('sRegularPrice').value))studioMarginCtrl.loadEvidence(d,overwrite||!document.getElementById('sPrice').value);
     if (d.studioCopy && (overwrite || !document.getElementById("sCopy").value)) {
       document.getElementById("sCopy").value = d.studioCopy;
     }
@@ -1424,32 +1419,68 @@ const entry32=route32(location.href);let archive=[], connected=false,pendingId=e
     summary.append(title,meta);fold.append(summary,main,thumbs,info);const actions=node('div',null,'lf-collect-actions');actions.append(pick,btn,del);a.append(fold,actions);grid.append(a)}if(!list.length)grid.append(node('div',connected?(q?'검색 결과가 없습니다.':'아직 보관된 상품이 없습니다.'):'보관함 연결 중','cp-empty-card'))}
   const library31=document.createElement('section');library31.id='lf31Library';library31.hidden=true;library31.className='cp-card';library31.innerHTML='<h1>상품리스트</h1><p>제작실에서 저장한 완성본입니다. 이 브라우저에 보관되며 원본 수집 카드와 독립적입니다.</p><label>완성 상품 검색 <input id="lf31Query" placeholder="상품명 또는 품번"></label><div class="lf32tools"><label hidden>이전 상태 <select id="lf32Filter"><option>전체</option><option>등록 대기</option><option>등록 완료</option></select></label><label>정렬 <select id="lf32Sort"><option>최근 수정순</option><option>상품명순</option></select></label><span id="lf32Count"></span></div><div id="lf31Rows"></div><section id="lf31Preview" aria-live="polite"></section>';content.append(library31);
   const libEl=id=>document.getElementById(id),libUrls=[];let renderRev=0,previewRev=0,db31;
-  function registration34(p,date){return {id:p.id,owner:p.owner,name:p.name,price:p.price,code:p.code,options:(p.options||[]).map(o=>({color:o.color||'',size:o.size||'',code:o.code||''})),date:date||'',wing:'',memo:''}}
+  function registration34(p,date){return {id:p.id,owner:p.owner,name:p.name,brand:p.brand||'',price:p.price,code:p.code,options:(p.options||[]).map(o=>({color:o.color||'',size:o.size||'',code:o.code||''})),date:date||'',wing:'',memo:''}}
   function conn31(){return db31||(db31=new Promise((ok,no)=>{const r=indexedDB.open('lf-product-library-31',2);r.onupgradeneeded=e=>{const db=r.result;for(const n of ['info','images','posted'])if(!db.objectStoreNames.contains(n))db.createObjectStore(n);if(e.oldVersion===1){const tx=r.transaction,cur=tx.objectStore('info').openCursor();cur.onsuccess=()=>{const c=cur.result;if(!c)return;if(c.value.uploaded&&c.value.owner)tx.objectStore('posted').put(registration34(c.value,''),c.key);c.continue()}}};r.onblocked=()=>{const a=document.getElementById('lfConnection');if(a)a.textContent='저장소 갱신 대기 중입니다. 다른 제작실 탭을 닫아 주세요.'};r.onsuccess=()=>{r.result.onversionchange=()=>{r.result.close();db31=null};ok(r.result)};r.onerror=()=>{db31=null;no(r.error)}}))}
   async function readLib31(store,key){const db=await conn31();return new Promise((ok,no)=>{const t=db.transaction(store),s=t.objectStore(store),r=key===undefined?s.getAll():s.get(key);r.onsuccess=()=>ok(r.result);r.onerror=()=>no(r.error)})}
   async function persist31(meta,images){const db=await conn31();return new Promise((ok,no)=>{const t=db.transaction(['info','images'],'readwrite');t.objectStore('info').put(meta,meta.id);t.objectStore('images').put(images,meta.id);t.oncomplete=ok;t.onerror=t.onabort=()=>no(t.error||Error('저장 취소'))})}
   function clearPreview31(){previewRev++;libEl('lf31Preview').replaceChildren();for(const u of libUrls.splice(0))URL.revokeObjectURL(u)}
   function libButton(title,fn){const b=document.createElement('button');b.type='button';b.textContent=title;b.onclick=async()=>{b.disabled=true;try{await fn()}catch(e){alert(e.message)}finally{b.disabled=false}};return b}
-  function info31(p){return [p.name,'품번: '+p.code,'브랜드: '+p.brand,'판매가: '+(p.price||'미입력'),'검색어: '+p.tags,'LF몰 링크: '+p.url,'','옵션',...p.options.map(o=>[o.color,o.size,o.code,'판매 수량 '+o.stock].join(' / ')),'','상품정보제공고시',...NOTICE_FIELDS.map(([k,l])=>l+': '+(p.notice[k]||'확인 필요'))].join('\n')}
+  function info31(p){return [p.name,'품번: '+p.code,'브랜드: '+p.brand,'판매가: '+(p.price||'미입력'),'검색어: '+rowsOpt36(p).tags.join(', '),'색상 전체: '+rowsOpt36(p).colors.join(', '),'사이즈 전체: '+rowsOpt36(p).sizes.join(', '),'LF몰 링크: '+p.url,'','옵션',...p.options.map(o=>[o.color,o.size,o.code,'판매 수량 '+o.stock,'색상 품번 '+(o.lfColorCode||'미확인'),'실제 매입원가 '+(wonOpt36(String(o.actualCost??'').trim()===''?p.priceTerms?.actualCost:o.actualCost)??'미확인'),'LF 최대혜택가 '+(wonOpt36(o.lfBenefitPrice)??'미확인')+(wonOpt36(o.lfBenefitPrice)&&o.lfBenefitReview!==false?' (확인 필요)':'')].join(' / ')),'','상품정보제공고시',...NOTICE_FIELDS.map(([k,l])=>l+': '+(p.notice[k]||'확인 필요'))].join('\n')}
   function download31(blob,name){const u=URL.createObjectURL(blob),a=document.createElement('a');a.href=u;a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(u),30000)}
 async function removeFinished33(p){if(!confirm('「'+p.name+'」의 저장된 완성 이미지와 상품정보를 상품리스트에서 삭제할까요? 수집 보관함·재고 관리·쿠팡에는 영향이 없습니다.'))return;const db=await conn31();await new Promise((ok,no)=>{const t=db.transaction(['info','images'],'readwrite'),meta=t.objectStore('info'),r=meta.get(p.id);t.oncomplete=ok;t.onabort=t.onerror=()=>no(t.error||Error('삭제할 수 없습니다. 소유 계정과 상품을 확인하세요.'));r.onsuccess=()=>{if(!authState?.email||r.result?.owner!==authState.email){t.abort();return}meta.delete(p.id);t.objectStore('images').delete(p.id)}});clearPreview31();await render31()}
   const posted34=node('section',null,'cp-card');posted34.hidden=true;posted34.id='posted34';const postedRows34=node('div'),postedQuery34=node('input');postedQuery34.placeholder='상품명 · 색상 품번 · 쿠팡 상품번호';postedQuery34.setAttribute('aria-label','올린 상품 검색');posted34.append(node('h1','올린 상품'),node('p','직접 등록한 시점의 별도 기록입니다. 완성본·재고를 변경하지 않으며 쿠팡과 연동되지 않습니다.'),postedQuery34,postedRows34);content.append(posted34);postedQuery34.oninput=()=>showPosted34();let postedRev34=0;
- async function writePosted34(p,action){const db=await conn31();await new Promise((ok,no)=>{const t=db.transaction('posted','readwrite'),s=t.objectStore('posted'),r=s.get(p.id);let err='';r.onsuccess=()=>{const prev=r.result;if(!authState?.email||p.owner!==authState.email||(prev&&prev.owner!==authState.email)){err='계정을 확인하세요.';t.abort();return}if(action==='new'){if(prev){err='이미 올린 상품 장부에 기록되어 있습니다.';t.abort();return}s.add(p,p.id)}else if(!prev){err='기록이 없습니다.';t.abort()}else if(action==='delete')s.delete(p.id);else s.put({...prev,wing:p.wing,memo:p.memo,date:p.date},p.id)};t.oncomplete=ok;t.onerror=t.onabort=()=>no(Error(err||'장부 저장 실패'))})}
+ // 장부는 독립 스냅샷. 기존 키·소유자·미지 필드를 보존하며 다른 탭의 편집을 덮지 않는다.
+ async function writePosted34(p,action,draft){
+   const db=await conn31(); return new Promise((ok,no)=>{
+     const t=db.transaction('posted','readwrite'),s=t.objectStore('posted'),r=s.get(p.id); let err='';
+     const refuse=m=>{err=m;t.abort()};
+     r.onsuccess=()=>{
+       const prev=r.result;
+       if(!authState?.email||p.owner!==authState.email||(prev&&(prev.owner!==p.owner||prev.id!==p.id)))return refuse('같은 계정의 원래 장부 기록만 변경할 수 있습니다.');
+       if(action==='new'){if(prev)return refuse('이미 기록한 상품입니다.');s.add(p,p.id);return}
+       if(!prev)return refuse('기록이 없습니다. 재조회하세요.');
+       if((prev.ledgerRevision||0)!==(p.ledgerRevision||0))return refuse('다른 탭에서 장부가 변경됐습니다. 재조회 후 다시 편집하세요.');
+       if(action==='delete'){s.delete(p.id);return}
+       if(action!=='edit'||!draft)return refuse('편집 내용이 없습니다.');
+       const {name,brand,code,price,date,wing,memo,options}=draft;
+       s.put({...prev,name,brand,code,price,date,wing,memo,options,ledgerRevision:(prev.ledgerRevision||0)+1},p.id);
+     };t.oncomplete=ok;t.onerror=t.onabort=()=>no(Error(err||'장부 저장 실패'));
+   });
+ }
  async function mark32(p){if(!confirm('쿠팡에 직접 올린 상품인가요? 현재 완성본의 정보를 별도 장부에 복사합니다. 쿠팡으로 전송하지 않습니다.'))return;await writePosted34(registration34(p,formatDate()),'new');switchView('posted')}
- async function showPosted34(){const rev=++postedRev34,email=authState?.email;postedRows34.replaceChildren();if(!email||posted34.hidden)return;try{const list=(await readLib31('posted')).filter(p=>p.owner===email).sort((a,b)=>(b.date||'').localeCompare(a.date||''));if(rev!==postedRev34||authState?.email!==email||posted34.hidden)return;const q=postedQuery34.value.trim().toLowerCase();const rows=[];for(const p of list){const codes=[...new Set((p.options||[]).map(o=>[o.color,o.code||'품번 미확인'].filter(Boolean).join(' ')))];if(![p.name,p.code,p.wing,...codes].join(' ').toLowerCase().includes(q))continue;const summary=node('div');summary.append(node('b',p.name),node('small',codes.join(' / ')||p.code));const date=node('input'),wing=node('input'),memo=node('input');date.type='date';date.value=p.date||'';wing.value=p.wing||'';memo.value=p.memo||'';date.setAttribute('aria-label','실제 등록일');wing.setAttribute('aria-label','쿠팡 상품번호');memo.setAttribute('aria-label','작업 메모');const bar=node('div');bar.append(libButton('기록 저장',async()=>{await writePosted34({...p,date:date.value,wing:wing.value.trim(),memo:memo.value.trim()},'edit');await showPosted34()}),libButton('장부에서 삭제',async()=>{if(!confirm('이 등록 기록만 삭제할까요? 상품리스트·재고·쿠팡에는 영향이 없습니다.'))return;await writePosted34(p,'delete');await showPosted34()}));rows.push([summary,p.price||'미입력',date,wing,memo,bar])}postedRows34.append(rows.length?table32(['상품 / 색상별 품번','등록 당시 판매가','실제 등록일','쿠팡 상품번호','메모','관리'],rows):node('p',q?'검색 결과가 없습니다.':'아직 직접 기록한 상품이 없습니다. 상품리스트에서 「올린 상품에 기록」을 누르세요.'))}catch(e){if(rev===postedRev34)postedRows34.textContent=e.message}}
+ function postedEditor36(p,host){
+   const form=node('section',null,'posted-editor36'); form.setAttribute('aria-label','등록 기록 편집');
+   function field(label,value,type='text',into=form){const wrap=node('label',label+' '),input=node('input');input.type=type;input.value=value??'';wrap.append(input);into.append(wrap);return input}
+   form.append(node('h3','등록 기록 편집'),node('p','이 장부에만 저장합니다. 상품리스트·재고·WING에는 반영하지 않습니다.'));
+   const name=field('등록 상품명',p.name),brand=field('등록 브랜드',p.brand),code=field('대표 품번',p.code),price=field('실제 등록 판매가(원)',p.price),date=field('실제 등록일',p.date,'date'),wing=field('쿠팡 상품번호',p.wing),memo=field('작업 메모',p.memo);
+   const opts=(p.options||[]).map((o,i)=>{const row=node('fieldset');row.append(node('legend','등록 옵션 '+(i+1)));form.append(row);return ['color','size','code'].map((k,j)=>field(['색상','사이즈','옵션 품번'][j],o[k],'text',row))});
+   const save=libButton('장부 변경 저장',async()=>{const n=name.value.trim(),raw=price.value.trim();if(!n)throw Error('등록 상품명을 입력하세요.');if(raw&&!/^(?:[1-9]\d*|[1-9]\d{0,2}(?:,\d{3})+)$/.test(raw))throw Error('등록 판매가는 양의 정수 원 또는 빈칸으로 입력하세요.');if(raw&&!Number.isSafeInteger(Number(raw.replace(/,/g,''))))throw Error('등록 판매가를 확인하세요.');
+     await writePosted34(p,'edit',{name:n,brand:brand.value.trim(),code:code.value.trim(),price:raw.replace(/,/g,''),date:date.value,wing:wing.value.trim(),memo:memo.value.trim(),options:opts.map(([c,z,k],i)=>({...p.options[i],color:c.value.trim(),size:z.value.trim(),code:k.value.trim()}))});await showPosted34()});
+   form.append(save,libButton('변경 취소',()=>showPosted34()));host.replaceChildren(form);name.focus();
+ }
+ async function showPosted34(){
+   const rev=++postedRev34,email=authState?.email;postedRows34.replaceChildren();if(!email||posted34.hidden)return;
+   try{const list=(await readLib31('posted')).filter(p=>p.owner===email).sort((a,b)=>(b.date||'').localeCompare(a.date||''));if(rev!==postedRev34||authState?.email!==email||posted34.hidden)return;
+     const q=postedQuery34.value.trim().toLowerCase(),rows=[];
+     for(const p of list){const codes=[...new Set((p.options||[]).map(o=>[o.color,o.size,o.code||'품번 미확인'].filter(Boolean).join(' / ')))];if(![p.name,p.brand,p.code,p.wing,p.memo,...codes].join(' ').toLowerCase().includes(q))continue;
+       const summary=node('div');summary.append(node('b',p.name),node('small',[p.brand,p.code].filter(Boolean).join(' / ')));const bar=node('div');bar.append(libButton('장부 수정',()=>postedEditor36(p,postedRows34)),libButton('장부에서 삭제',async()=>{if(!confirm('이 장부 기록만 삭제할까요? 완성본·재고·쿠팡에는 영향이 없습니다.'))return;await writePosted34(p,'delete');await showPosted34()}));rows.push([summary,codes.join('; ')||'미확인',p.price||'미입력',p.date,p.wing,p.memo,bar]);}
+     postedRows34.append(rows.length?table32(['등록 상품 / 대표 품번','등록 옵션','실제 등록 판매가','등록일','쿠팡 상품번호','메모','관리'],rows):node('p',q?'검색 결과가 없습니다.':'아직 직접 기록한 상품이 없습니다. 상품리스트에서 「올린 상품에 기록」을 누르세요.'));
+   }catch(e){if(rev===postedRev34)postedRows34.textContent=e.message}
+ }
+ posted34.insertBefore(libButton('장부 재조회',()=>showPosted34()),postedRows34);
 
   function table32(head,rows){const wrap=node('div'),t=node('table');wrap.className='lf32wrap';t.className='lf32table';const h=t.createTHead().insertRow();for(const x of head)h.append(node('th',x));const body=t.createTBody();for(const vs of rows){const tr=body.insertRow();for(const x of vs){const td=tr.insertCell();if(x instanceof Node)td.append(x);else td.textContent=String(x??'')}}wrap.append(t);return wrap}
   function libMatches32(p,q,filter){return(filter==='전체'||(p.uploaded?'등록 완료':'등록 대기')===filter)&&[p.name,p.brand,p.code,...(p.colors||[]),...(p.options||[]).map(o=>o.code)].join(' ').toLowerCase().includes(q)}
-  async function preview31(p){p=listingFields(p);clearPreview31();const rev=previewRev;const area=libEl('lf31Preview');const bar=node('div',null,'lf32tools');bar.append(node('h2',p.name),libButton('상세 닫기',clearPreview31));const info=node('div',null,'lf32summary');info.append(node('b',p.brand+' · '+p.code),node('span','판매가 '+(p.price||'미입력')),node('span',(p.colors||[]).join(' / ')));const tabs=node('div',null,'lf32tools'),body=node('div');area.append(bar,info,tabs,body);let tabRev=0;let assets=null;const fetchAssets=()=>assets||(assets=readLib31('images',p.id));
+  async function preview31(p){p=listingFields(p);clearPreview31();const rev=previewRev;const area=libEl('lf31Preview');const bar=node('div',null,'lf32tools');bar.append(node('h2',p.name),libButton('상세 닫기',clearPreview31));const info=node('div',null,'lf32summary');info.append(node('b',p.brand+' · '+p.code),node('span','판매가 '+(p.price||'미입력')),node('span',(p.colors||[]).join(' / ')));const marginBox=node('details');marginBox.append(node('summary','저장 시점의 예상 순수익 · 부가세 정산 전'),...summary36(p.price,p.options,p.priceTerms||{}).map(s=>node('p',s)));const tabs=node('div',null,'lf32tools'),body=node('div');area.append(bar,info,copyPanel36(p),marginBox,tabs,body);let tabRev=0;let assets=null;const fetchAssets=()=>assets||(assets=readLib31('images',p.id));
     const show=async tab=>{const seq=++tabRev;body.replaceChildren();for(const u of libUrls.splice(0))URL.revokeObjectURL(u);for(const b of tabs.querySelectorAll('button[data-tab]'))b.setAttribute('aria-pressed',String(b.dataset.tab===tab));if(tab==='기본정보'){body.append(table32(['항목','값'],[['상품명',p.name],['브랜드',p.brand],['품번',p.code],['검색어',p.tags],['원본',p.url]]),libButton('상품 정보 복사',()=>navigator.clipboard.writeText(info31(p))));return}if(tab==='옵션·재고'){body.append(table32(['색상','사이즈','품번','판매수량'],(p.options||[]).map(o=>[o.color,o.size,o.code,String(o.stock??'미확인')+(o.stockStatus==='unknown'?' (확인 필요)':'')])));return}if(tab==='상품고시'){body.append(table32(['고시 항목','내용'],NOTICE_FIELDS.map(([k,l])=>[l,p.notice?.[k]||'확인 필요'])));return}const files=(await fetchAssets())||[];if(rev!==previewRev||seq!==tabRev)return;
     for(const section of ['대표 이미지','상세페이지','추가 이미지']){const group=files.filter(f=>(f.path.endsWith('/대표.png')?'대표 이미지':f.path.startsWith('업로드용_상세페이지/')?'상세페이지':'추가 이미지')===section);if(!group.length)continue;const box=node('details');box.open=section==='대표 이미지';box.append(node('summary',section+' '+group.length+'장'));const grid=node('div',null,'lf32images');for(const f of group){const cell=node('div'),u=URL.createObjectURL(f.blob);libUrls.push(u);const thumb=node('img');thumb.src=u;thumb.alt=f.path;thumb.loading='lazy';const view=node('a');view.href=u;view.target='_blank';view.rel='noopener';view.title='원본 크기로 보기';view.append(thumb);cell.append(view,node('small',f.path),libButton('다운로드',()=>download31(f.blob,f.path.replaceAll('/','_'))));grid.append(cell)}box.append(grid);body.append(box)}};
     for(const name of ['기본정보','옵션·재고','상품고시','이미지']){const b=libButton(name,()=>show(name));b.dataset.tab=name;tabs.append(b)}tabs.append(libButton('업로드 자료 다운로드',async()=>{const files=await fetchAssets();download31(await window.LF31Pack([...files.map(f=>[f.path,f.blob]),['상품정보.txt',new Blob(['\uFEFF'+info31(p)],{type:'text/plain;charset=utf-8'})]]),(p.code||'상품')+'_업로드자료.zip')}));await show('기본정보');area.scrollIntoView({block:'start'})}
-  let page32=0,pageKey32='';async function render31(){const rev=++renderRev,area=libEl('lf31Rows');try{const email=authState?.email;if(!email){area.textContent='로그인 후 확인하세요.';return}const all=(await readLib31('info')).filter(p=>p.owner===email);if(rev!==renderRev||library31.hidden)return;const q=libEl('lf31Query').value.trim().toLowerCase(),filter=libEl('lf32Filter').value,sort=libEl('lf32Sort').value;const list=all.filter(p=>libMatches32(p,q,filter)).sort((a,b)=>sort==='상품명순'?a.name.localeCompare(b.name,'ko'):b.updated-a.updated);libEl('lf32Count').textContent=list.length+' / '+all.length+'개';area.replaceChildren();if(!list.length){area.textContent=all.length?'조건에 맞는 상품이 없습니다.':'아직 저장된 완성 상품이 없습니다.';return}const pk=[q,filter,sort].join('|');if(pk!==pageKey32){page32=0;pageKey32=pk}const pages=Math.ceil(list.length/20);page32=Math.min(page32,pages-1);const subset=list.slice(page32*20,page32*20+20);area.append(table32(['상품명 / 품번','판매가','옵션','저장일','작업 상태','자료','관리'],subset.map(p=>{const tag=node('div');tag.append(node('strong',p.name),node('small',p.code));const mark=libButton('올린 상품에 기록',()=>mark32(p));mark.title='현재 자료를 별도 장부에 복사합니다. 쿠팡으로 전송되지 않습니다.';return [tag,p.price||'미입력',(p.options||[]).length+'개',new Date(p.updated).toLocaleDateString('ko-KR'),mark,libButton('열기',()=>preview31(p)),libButton('삭제',()=>removeFinished33(p))]})));if(pages>1){const nav=node('div',null,'lf32tools'),back=libButton('이전',()=>{page32--;return render31()}),next=libButton('다음',()=>{page32++;return render31()});back.disabled=page32===0;next.disabled=page32+1===pages;nav.append(back,node('span',(page32+1)+' / '+pages),next);area.append(nav)}}catch(e){area.textContent='목록 조회 실패: '+e.message}}
+  let page32=0,pageKey32='';async function render31(){const rev=++renderRev,area=libEl('lf31Rows');try{const email=authState?.email;if(!email){area.textContent='로그인 후 확인하세요.';return}const all=(await readLib31('info')).filter(p=>p.owner===email);if(rev!==renderRev||library31.hidden)return;const q=libEl('lf31Query').value.trim().toLowerCase(),filter=libEl('lf32Filter').value,sort=libEl('lf32Sort').value;const list=all.filter(p=>libMatches32(p,q,filter)).sort((a,b)=>sort==='상품명순'?a.name.localeCompare(b.name,'ko'):b.updated-a.updated);libEl('lf32Count').textContent=list.length+' / '+all.length+'개';area.replaceChildren();if(!list.length){area.textContent=all.length?'조건에 맞는 상품이 없습니다.':'아직 저장된 완성 상품이 없습니다.';return}const pk=[q,filter,sort].join('|');if(pk!==pageKey32){page32=0;pageKey32=pk}const pages=Math.ceil(list.length/20);page32=Math.min(page32,pages-1);const subset=list.slice(page32*20,page32*20+20);area.append(table32(['상품명 / 품번','판매가','옵션','저장일','작업 상태','자료','관리'],subset.map(p=>{const tag=node('div');tag.append(node('strong',p.name),node('small',p.code),copyPanel36(p));const mark=libButton('올린 상품에 기록',()=>mark32(p));mark.title='현재 자료를 별도 장부에 복사합니다. 쿠팡으로 전송되지 않습니다.';return [tag,p.price||'미입력',(p.options||[]).length+'개',new Date(p.updated).toLocaleDateString('ko-KR'),mark,libButton('열기',()=>preview31(p)),libButton('삭제',()=>removeFinished33(p))]})));if(pages>1){const nav=node('div',null,'lf32tools'),back=libButton('이전',()=>{page32--;return render31()}),next=libButton('다음',()=>{page32++;return render31()});back.disabled=page32===0;next.disabled=page32+1===pages;nav.append(back,node('span',(page32+1)+' / '+pages),next);area.append(nav)}}catch(e){area.textContent='목록 조회 실패: '+e.message}}
   libEl('lf31Query').oninput=render31;libEl('lf32Filter').onchange=render31;libEl('lf32Sort').onchange=render31;
-  const save31Btn=libButton('완성본을 상품리스트에 저장',async()=>{if(!bridgeMakerData||!authState?.email)throw Error('로그인 후 제작할 상품을 선택하세요.');if(!window.LF31Files)throw Error('studio-core.js를 최신 파일로 교체하세요.');const files=window.LF31Files(),d=bridgeMakerData;const meta={id:JSON.stringify([authState.email,d.id]),owner:authState.email,updated:Date.now(),count:files.length,name:libEl('sName').value.trim()||d.lfName,brand:libEl('sBrand').value,code:d.code,url:d.url,colors:[...d.colors],options:studioOptCtrl.getOptions(),notice:getNoticeFromForm('s'),tags:libEl('sTags').value,price:libEl('sPrice').value,cost:parseNum(libEl('sDiscountPrice').value),priceTerms:priceTerms('s')};await persist31(listingFields(meta),files);switchView('library');await preview31(meta)});save31Btn.className='cp-primary-btn';(document.getElementById('out')||studioRegSection).append(save31Btn);
+  const save31Btn=libButton('완성본을 상품리스트에 저장',async()=>{if(!bridgeMakerData||!authState?.email)throw Error('로그인 후 제작할 상품을 선택하세요.');if(!window.LF31Files)throw Error('studio-core.js를 최신 파일로 교체하세요.');const files=window.LF31Files(),d=bridgeMakerData;const meta={id:JSON.stringify([authState.email,d.id]),owner:authState.email,updated:Date.now(),count:files.length,name:libEl('sName').value.trim(),brand:libEl('sBrand').value,code:d.code,url:d.url,colors:[...d.colors],options:studioOptCtrl.getOptions(true),notice:getNoticeFromForm('s'),tags:libEl('sTags').value,price:libEl('sPrice').value,discountPrice:won36(libEl('sDiscountPrice').value),regularPrice:won36(libEl('sRegularPrice').value),priceTerms:priceTerms('s')};await persist31(validatedListing36(meta),files);switchView('library');await preview31(meta)});save31Btn.className='cp-primary-btn';(document.getElementById('out')||studioRegSection).append(save31Btn);
   function switchView(name,boot=false){if(!boot&&name!=='studio')pendingId=null;if(name==='studio'&&!bridgeMakerData){name='collect';el('lfConnection').textContent='먼저 보관함에서 제작할 상품을 선택하세요.'}if(!boot)history.replaceState(history.state,'',path32(location.href,name,bridgeMakerData?.id));layout.dataset.view=name;const inMaker=name==='studio';menuButtons.forEach(b=>{b.classList.toggle('active',b.dataset.view===name);b.setAttribute('aria-current',b.dataset.view===name?'page':'false')});titleEl.textContent=titles[name];collectView.hidden=name!=='collect';studioRegSection.hidden=!inMaker;if(studioMain)studioMain.hidden=!inMaker;listView.hidden=name!=='stock';quickSaveBtn.hidden=!inMaker;quickSaveBtn.style.display=inMaker?'':'none';const step=['collect','studio','library','posted','stock'].indexOf(name)+1;el('cpStepText').textContent='현재 '+step+' / 5 단계';el('cpStepBar').style.width=step*100/5+'%';posted34.hidden=name!=='posted';if(name==='posted')showPosted34();else{postedRev34++;postedRows34.replaceChildren()}library31.hidden=name!=='library';if(name==='library')render31();else clearPreview31();if(name==='stock'&&authState?.idToken)fetchProducts();scrollPageToTop()}
   let archiveVersion31=false;const deleteRequests31=new Map();const poll=()=>window.postMessage({type:'LF29_POLL'},location.origin);
-  window.addEventListener('message',async e=>{if(e.source!==window||e.origin!==location.origin)return;const msg=e.data;if(msg?.type==='LF31_DELETED'&&deleteRequests31.has(msg.rid)){clearTimeout(deleteRequests31.get(msg.rid));deleteRequests31.delete(msg.rid);if(msg.error){el('lfConnection').textContent='삭제 실패: '+msg.error;return}archive=msg.records;updateCollectView();el('lfConnection').textContent='보관함에서 '+msg.ids.length+'개 상품을 삭제했습니다.';return}if(msg?.type==='LF29_LIST')archiveVersion31=msg.version>=31;if(msg?.type==='LF29_ERROR'){el('lfConnection').textContent=msg.message;return}if(msg?.type!=='LF29_LIST'||!Array.isArray(msg.records))return;connected=true;archive=msg.records.filter(d=>d?.id&&Array.isArray(d.items)&&Array.isArray(d.colors));updateCollectView();if(!pendingId||mounting)return;const selected=archive.find(d=>d.id===pendingId);if(!selected){pendingId=null;switchView('collect');el('lfConnection').textContent='선택한 상품을 찾지 못했습니다.';return}pendingId=null;mounting=true;bridgeMakerData=selected;try{switchView('studio');setNativeInputValue(document.getElementById('code'),selected.code);setNativeInputValue(document.getElementById('brand'),(selected.lfName.match(/헤지스|닥스|질스튜어트|마에스트로|알레그리/i)||[])[0]);setNativeInputValue(document.querySelector('input[placeholder="긴팔 카라 니트"]'),selected.lfName);await syncFromStudioPanel(false,true);if(typeof window.LF29Mount!=='function')throw Error('사이트 bridge.js를 함께 교체하세요.');await window.LF29Mount(selected)}catch(err){alert('선택 상품 불러오기: '+err.message)}finally{mounting=false}});
+  window.addEventListener('message',async e=>{if(e.source!==window||e.origin!==location.origin)return;const msg=e.data;if(msg?.type==='LF31_DELETED'&&deleteRequests31.has(msg.rid)){clearTimeout(deleteRequests31.get(msg.rid));deleteRequests31.delete(msg.rid);if(msg.error){el('lfConnection').textContent='삭제 실패: '+msg.error;return}archive=msg.records;updateCollectView();el('lfConnection').textContent='보관함에서 '+msg.ids.length+'개 상품을 삭제했습니다.';return}if(msg?.type==='LF29_LIST')archiveVersion31=msg.version>=31;if(msg?.type==='LF29_ERROR'){el('lfConnection').textContent=msg.message;return}if(msg?.type!=='LF29_LIST'||!Array.isArray(msg.records))return;connected=true;archive=msg.records.filter(d=>d?.id&&Array.isArray(d.items)&&Array.isArray(d.colors));updateCollectView();if(!pendingId||mounting)return;const transfer=new URL(location.href).searchParams.get('lf35');const selected=transfer?(msg.rid===transfer&&msg.snapshot35?.id===pendingId?msg.snapshot35:null):archive.find(d=>d.id===pendingId);if(transfer&&!selected){el('lfConnection').textContent='이 탭의 선택본을 불러오지 못했습니다. 확장 파일을 확인하고 LF 탭에서 다시 여세요.';return}if(!selected){pendingId=null;switchView('collect');el('lfConnection').textContent='선택한 상품을 찾지 못했습니다.';return}pendingId=null;mounting=true;bridgeMakerData=selected;try{switchView('studio');setNativeInputValue(document.getElementById('code'),selected.code);setNativeInputValue(document.getElementById('brand'),(selected.lfName.match(/헤지스|닥스|질스튜어트|마에스트로|알레그리/i)||[])[0]);setNativeInputValue(document.querySelector('input[placeholder="긴팔 카라 니트"]'),selected.lfName);await syncFromStudioPanel(false,true);if(typeof window.LF29Mount!=='function')throw Error('사이트 bridge.js를 함께 교체하세요.');await window.LF29Mount(selected,{rid:transfer})}catch(err){alert('선택 상품 불러오기: '+err.message)}finally{mounting=false}});
   menuButtons.forEach(b=>b.onclick=()=>switchView(b.dataset.view));sidebar.querySelectorAll('.cp-side-link').forEach(b=>b.onclick=()=>switchView(b.dataset.go));const removeFromArchive=ids=>{const found=archive.filter(g=>ids.includes(g.id));if(!found.length)return alert('삭제할 상품을 선택하세요.');if(confirm(found.map(g=>g.lfName+' ('+g.colors.join(', ')+')').join('\n')+'\n선택한 '+found.length+'개 상품과 해당 색상들을 수집 보관함에서 삭제할까요? 재고 관리 등록 정보는 유지됩니다.')){if(!archiveVersion31)return alert('삭제를 지원하는 최신 content.js가 연결되지 않았습니다. 확장 프로그램과 이 탭을 새로고침하세요.');const rid=crypto.randomUUID();deleteRequests31.set(rid,setTimeout(()=>{deleteRequests31.delete(rid);el('lfConnection').textContent='삭제 응답이 없습니다. 확장 프로그램을 다시 로드한 뒤 목록을 새로고침하세요.'},6000));el('lfConnection').textContent='삭제 확인 중…';window.postMessage({type:'LF31_DELETE',ids,rid},location.origin)}};el('lfRemove').onclick=()=>removeFromArchive([...document.querySelectorAll('.lfMergePick:checked')].map(b=>b.value));el('lfMerge').onclick=()=>{const ids=[...document.querySelectorAll('.lfMergePick:checked')].map(x=>x.value);if(ids.length<2)return alert('같은 상품의 색상 카드 두 개 이상을 체크하세요.');if(confirm('선택한 카드들을 같은 상품의 색상 옵션으로 묶을까요?'))window.postMessage({type:'LF30_MERGE',ids},location.origin)};el('btnCollectSync').onclick=poll;el('cpCollectSearch').oninput=updateCollectView;switchView(entry32.view==='studio'?'collect':entry32.view,true);updateCollectView();poll();
 
   function updateMonthOptions() {
@@ -1512,7 +1543,7 @@ async function removeFinished33(p){if(!confirm('「'+p.name+'」의 저장된 �
           code: f.code?.stringValue || "",
           options: options.map(o => ({ ...o, stock: clampStock(o.stock ?? 0) })),
           notice: { ...notice, size: NOTICE_SIZE_TEXT, asInfo: notice?.asInfo || "상세페이지 참고" },
-          tags: parseTags(f.tags?.stringValue, { options, notice }).join("/"),
+          tags: parseTags(f.tags?.stringValue,{options,notice},Infinity).join(', '),
           sourceUrl: f.sourceUrl?.stringValue || "",
           thumbUrl: f.thumbUrl?.stringValue || "",
           detailImgUrl: f.detailImgUrl?.stringValue || "",
@@ -1536,7 +1567,7 @@ async function removeFinished33(p){if(!confirm('「'+p.name+'」의 저장된 �
   }
 
   async function saveToFirebase(item) {
-    item = listingFields(item);
+    item = validatedListing36(item);
     const user = getUserName();
     const firstCode = item.code || (item.options?.[0]?.code || "");
     const safeOpts = (item.options || []).map(o => ({ ...o, stock: clampStock(o.stock ?? 0) }));
@@ -1552,7 +1583,7 @@ async function removeFinished33(p){if(!confirm('「'+p.name+'」의 저장된 �
         code: { stringValue: firstCode },
         optionsJson: { stringValue: JSON.stringify(safeOpts) },
         noticeJson: { stringValue: JSON.stringify(mergedNotice) },
-        tags: { stringValue: parseTags(item.tags).join("/") },
+        tags: { stringValue: item.tags },
         sourceUrl: { stringValue: item.sourceUrl || "" },
         thumbUrl: { stringValue: item.thumbUrl || "" },
         detailImgUrl: { stringValue: item.detailImgUrl || "" },
@@ -1577,7 +1608,7 @@ async function removeFinished33(p){if(!confirm('「'+p.name+'」의 저장된 �
   }
 
   async function updateProductInFirebase(id, item) {
-    item = listingFields(item);
+    item = validatedListing36(item);
     const fieldKeys = [
       "uploadDate", "brand", "category", "name", "lfName", "code", "optionsJson", "noticeJson", "tags",
       "sourceUrl", "thumbUrl", "detailImgUrl", "discountPrice", "price", "regularPrice", "priceTermsJson",
@@ -1598,7 +1629,7 @@ async function removeFinished33(p){if(!confirm('「'+p.name+'」의 저장된 �
         code: { stringValue: firstCode },
         optionsJson: { stringValue: JSON.stringify(safeOpts) },
         noticeJson: { stringValue: JSON.stringify(mergedNotice) },
-        tags: { stringValue: parseTags(item.tags).join("/") },
+        tags: { stringValue: item.tags },
         sourceUrl: { stringValue: item.sourceUrl || "" },
         thumbUrl: { stringValue: item.thumbUrl || "" },
         detailImgUrl: { stringValue: item.detailImgUrl || "" },
@@ -1680,6 +1711,7 @@ async function removeFinished33(p){if(!confirm('「'+p.name+'」의 저장된 �
       const aoa = [row1, row2, row3, row4];
 
       list.forEach(p => {
+        const validatedPrice=exportPrices36(p);
         const brandVal = p.brand || (p.name.split(" ")[0] || "자체브랜드");
         const opts = (p.options && p.options.length)
           ? p.options
@@ -1696,11 +1728,11 @@ async function removeFinished33(p){if(!confirm('「'+p.name+'」의 저장된 �
           r[4] = "새상품";
           r[6] = brandVal;
           r[7] = brandVal;
-          r[8] = parseTags(p.tags, p).join("/");
+          r[8] = parseTags(p.tags,p).join(', ');
           if (opt.color) { r[9] = "색상"; r[10] = opt.color; }
           if (opt.size) { r[11] = "사이즈"; r[12] = opt.size; }
-          r[61] = p.price || 0;
-          r[63] = p.regularPrice || p.price || 0;
+          r[61] = validatedPrice.sale;
+          r[63] = validatedPrice.regular;
           r[64] = clampStock(opt.stock ?? 0);
           r[65] = 2;
           r[66] = 0;
@@ -1762,7 +1794,7 @@ async function removeFinished33(p){if(!confirm('「'+p.name+'」의 저장된 �
     document.getElementById("eStatus").value = p.status || "수집완료";
     document.getElementById("eCopy").value = p.copy || "";
     restorePriceTerms('e',p.priceTerms);
-    editMarginCtrl.reset(true);
+    editMarginCtrl.reset(true,p.priceTerms);
     editModal.hidden = false;
   }
 
@@ -1776,7 +1808,8 @@ async function removeFinished33(p){if(!confirm('「'+p.name+'」의 저장된 �
     const name = document.getElementById("eName").value.trim();
     if (!name) return alert("쿠팡 상품명을 입력해 주세요.");
     try {
-      const options = editOptCtrl.getOptions();
+      const options = editOptCtrl.getOptions(true);
+      if(!won36(document.getElementById("ePrice").value)) throw Error("판매가를 양의 원 단위로 입력하세요.");
       await updateProductInFirebase(editingId, {
         uploadDate: document.getElementById("eUploadDate").value || formatDate(),
         brand: document.getElementById("eBrand").value.trim(),
@@ -1791,9 +1824,9 @@ async function removeFinished33(p){if(!confirm('「'+p.name+'」의 저장된 �
         thumbUrl: document.getElementById("eThumbUrl").value.trim(),
         detailImgUrl: document.getElementById("eDetailImgUrl").value.trim(),
         priceTerms:priceTerms('e'),
-        discountPrice: parseNum(document.getElementById("eDiscountPrice").value),
-        price: parseNum(document.getElementById("ePrice").value),
-        regularPrice: parseNum(document.getElementById("eRegularPrice").value),
+        discountPrice: won36(document.getElementById("eDiscountPrice").value),
+        price: won36(document.getElementById("ePrice").value),
+        regularPrice: won36(document.getElementById("eRegularPrice").value),
         status: document.getElementById("eStatus").value,
         copy: document.getElementById("eCopy").value.trim()
       });
@@ -1809,10 +1842,10 @@ async function removeFinished33(p){if(!confirm('「'+p.name+'」의 저장된 �
     if(!bridgeMakerData||mounting)return alert('선택한 상품을 모두 불러온 후 등록하세요.');if(!confirm('이 상품을 등록 상품으로 재고 관리에 추가할까요? 쿠팡으로 전송되지 않습니다.'))return;
     const ext = await readStudioAndExtensionData();
     const panelName = document.getElementById("sName").value.trim();
-    const fullName = panelName || ext.defaultName;
+    const fullName = panelName;
     if (!fullName) return alert("상품명을 입력하거나 제작실에 상품 정보를 먼저 입력해 주세요.");
 
-    const panelOptions = studioOptCtrl.getOptions();
+    const panelOptions = studioOptCtrl.getOptions(true);
     const finalOptions = panelOptions.length ? panelOptions : ext.options;
     const allColorsStr = [...new Set(finalOptions.map(o => o.color).filter(Boolean))].join(", ");
 
@@ -1825,16 +1858,16 @@ async function removeFinished33(p){if(!confirm('「'+p.name+'」의 저장된 �
       asInfo: "상세페이지 참고"
     };
 
-    const costVal=parseNum(document.getElementById('sDiscountPrice').value);
-    const saleVal=parseNum(document.getElementById('sPrice').value);
-    if (!(costVal>0 && saleVal>0)) return alert('LF 원가를 확인한 뒤 소싱가와 판매가를 입력하세요. 미확인 가격으로 등록하지 않습니다.');
+    const costVal=won36(document.getElementById('sDiscountPrice').value);
+    const saleVal=won36(document.getElementById('sPrice').value);
+    if (!saleVal) return alert('재고 등록 전 양의 원 단위 판매가를 확인하세요. 조건부 또는 색상 차이가 있으면 수동으로 결정하세요.');
 
     const panelCopy = document.getElementById("sCopy").value.trim();
     const finalCopy = panelCopy || ext.studioCopy;
 
     const thumbVal = document.getElementById("sThumbUrl").value.trim() || ext.thumbUrl;
     const detailVal = document.getElementById("sDetailImgUrl").value.trim() || ext.detailImgUrl || thumbVal;
-    const rawTagsVal = document.getElementById("sTags").value.trim() || (ext.seoTags || []).join(", ");
+    const rawTagsVal = document.getElementById("sTags").value.trim();
 
     try {
       await saveToFirebase({
@@ -1853,7 +1886,7 @@ async function removeFinished33(p){if(!confirm('「'+p.name+'」의 저장된 �
         priceTerms:priceTerms('s'),
         discountPrice: costVal,
         price: saleVal,
-        regularPrice: parseNum(document.getElementById("sRegularPrice").value),
+        regularPrice: won36(document.getElementById("sRegularPrice").value),
         status: "재고 관리",
         copy: finalCopy
       });

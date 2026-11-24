@@ -98,16 +98,62 @@ function retailCopy37(d,f,choice={}){
  if(lines.length<2&&check&&outer)add('규칙적으로 이어지는 체크가 시선을 모아 단색 이너만 받쳐 입어도 좋습니다.');if(lines.length<3&&neutral)add('차분한 '+f.colors.slice(0,2).join('·')+' 계열이라 밝은 톤의 옷과 함께하면 색 대비가 살아납니다.');
  if(form!=='아이템'){const styling=bag?'재킷 차림에는 단정하게, 데님 차림에는 가볍게 손에 들어 보세요.':scarf?'무늬 없는 코트 위에 한 번 둘러 주면 목선에 자연스럽게 포인트가 생깁니다.':knit?(check||stripe?'무늬 없는 슬랙스와 매치하면 상의의 패턴이 돋보이고 전체 차림은 단정해집니다.':'슬랙스와 입으면 단정하게, 데님과 입으면 조금 더 편안한 분위기로 연출할 수 있습니다.'):outer?(has(/골프/)?'골프 팬츠에는 필드룩으로, 데님에는 주말 외출용 아우터로 매치해 보세요.':'단색 이너 위에 가볍게 걸치고 일자 팬츠를 더하면 간결한 외출 차림이 완성됩니다.'):/티셔츠|반팔티|셔츠|블라우스/.test(form)?'데님에는 편안하게, 면 팬츠에는 한층 단정하게 매치할 수 있습니다.':/바지|스커트/.test(form)?'단색 셔츠를 곁들이면 하의의 디자인이 돋보이는 단정한 차림이 됩니다.':form==='원피스'?'플랫 슈즈와 입으면 가볍게, 재킷을 걸치면 단정한 외출 차림으로 연출할 수 있습니다.':'';add(styling)}return lines.join('\n')}
 
+// Local evidence only; no model, search, or paid API.
+const LF36Text = (() => {
+  const clean=x=>String(x??'').normalize('NFKC').replace(/\s+/g,' ').trim();
+  const key=x=>clean(x).toLowerCase().replace(/\s+/g,'');
+  const promo=/배송|출고|발송|할인|세일|특가|최저가|특별가|균일가|프로모션|쿠폰|사은|증정|단독|한정(?:판|판매|수량)|\d+\+\d+|무료|인기상품|인기폭발|신규|최신|한정수량|인기추천|정품인증|홈쇼핑히트|지금구매|득템|신상|강력추천|최고|고급|고품질|정품보장|본사정품|상위노출|베스트셀러|판매[량율]?1위|쿠팡|네이버|무신사|지마켓|아마존|11번가|테무|알리익스프레스|lf몰|freeshipping|bestseller|specialoffer|limitededition|coupang|amazon|aliexpress|naver|로켓|미확인|확인필요|상세페이지|속성없음|undefined|\bnull\b/i;
+  const banned=s=>promo.test(key(s));
+  function checkTitle(name){
+    const s=clean(name), tokens=s.toLowerCase().split(/\s+/);
+    if(!s) return '쿠팡 상품명을 직접 입력해 주세요.';
+    if(banned(s)||/[!★☆◎◆♬<>\[\]{}#@|?]/u.test(s)) return '상품명에서 판촉·과장·배송·플랫폼명·꾸밈 기호를 빼 주세요.';
+    if(new Set(tokens).size!==tokens.length) return '상품명의 중복 단어를 제거해 주세요.';
+    if(s.length>120)return '상품명을 공백 포함 120자 이내로 줄여 주세요.';
+    return '';
+  }
+  const styles='하우스 체크|스트라이프|체크|솔리드|도트|헤링본|플로럴|아가일|골지|케이블|자카드|퀼팅|플리츠|자수|프린트|패치워크|핀턱|배색|시어서커|코듀로이|트위드|데님|플리스|메시|기모|부클|리브드|니트 짜임|프린지|태슬|퍼 카라|탈부착|드로스트링|스트랩|버클|벨트|버튼|스냅|지퍼|집업|투웨이|포켓|슬릿|셔링|밴딩|랩 디자인|러플|레이스|하프 집업|후드|하이넥|반하이넥|브이넥|라운드넥|보트넥|터틀넥|카라넥|스탠드 카라|더블 브레스티드|싱글 브레스티드|레글런|드롭 숄더|오버핏|슬림핏|레귤러핏|와이드핏|테이퍼드핏|크롭|롱 기장|숏 기장|긴팔|반팔|7부|민소매|경량|리버시블|패커블|생활 방수|방풍|비즈니스|캐주얼|남녀공용|남성|여성|키즈'.split('|');
+  const fabrics='캐시미어|메리노울|양모|울|면|린넨|레이온|실크|폴리에스터|나일론|아크릴|알파카|앙고라|모헤어|소가죽|양가죽|스웨이드|구스다운|덕다운'.split('|');
+  const aliases={린넨:['리넨'],울:['모'],면:['코튼'],체크:['체크무늬'],스트라이프:['줄무늬'],라운드넥:['크루넥'],버튼:['단추'],집업:['지퍼 여밈'],자카드:['자가드'],메시:['메쉬'],남녀공용:['유니섹스']};
+  function hit(text,label){return [label,...(aliases[label]||[])].some(v=>{
+    const re=new RegExp((v.length===1?'(?<![가-힣A-Za-z])':'')+v.split('').join('\\s*')+(v.length===1?'(?=$|[\\s\\d:%/(),]|혼방|소재|니트|스웨터)':''),'i');
+    const m=text.match(re);if(!m)return false;
+    const suffix=text.slice(m.index+m[0].length).trimStart(),prefix=text.slice(0,m.index).trimEnd();
+    return !/^(?:성|기능|이|은|는|가)?\s*[:：]?\s*(?:없|아님|미포함|미적용|제외|불가|아닌|0\s*%|X(?:\s|$))/.test(suffix)&&!/(?:미적용|제외|없는|논)\s*$/.test(prefix);
+  })}
+  const evidence=v=>{
+    const raw=clean(v.lfName||v.title).replace(/\[[^\]]*(?:배송|증정|사은|특가|쿠폰|할인)[^\]]*\]/g,' ').split(/사은품|함께 구매|코디 추천|연관 상품|사은 증정|증정품/)[0];
+    const fabric=clean(v.notice?.material).split(/안감|배색|충전재|충전물|주머니|장식|부속|시보리|트리밍/)[0];
+    const fs=fabrics.filter(t=>hit(raw,t)||hit(fabric,t));
+    const wear=v.wear||{},verified=[];
+    for(const [field,val,tag] of [['신축성','좋아요','신축성 좋은 원단'],['두께감','얇음','얇은 원단'],['두께감','두꺼워요','두꺼운 원단'],['촉감','부드러움','부드러운 촉감'],['비침','없음','비침 없음'],['안감','부분 안감','부분 안감'],['안감','기모','기모 안감']])if(wear[field]===val)verified.push(tag);
+    return [...fs,...styles.filter(t=>hit(raw,t)),...verified].filter((t,i,arr)=>!arr.some(u=>t!==u&&key(u).includes(key(t))));
+  };
+  function facts(d={}){const vs=d.variants?.length?d.variants:[d], sets=vs.map(v=>evidence(v));return sets[0].filter(t=>sets.every(s=>s.includes(t)))}
+  function make(d,brand,cat){
+    const good=x=>clean(x)&&!checkTitle(x);brand=good(brand)?clean(brand):'';cat=good(cat)?clean(cat):'';
+    const list=facts(d), present=t=>!key(cat).includes(key(t))&&!key(brand).includes(key(t));
+    const gender=list.find(t=>['남녀공용','남성','여성','키즈'].includes(t));
+    const mid=list.filter(t=>t!==gender&&present(t)&&!/(원단|없음|촉감|안감)$/.test(t)).slice(0,2);
+    const name=cat?[...new Set([brand,gender,...mid,cat].filter(Boolean))].join(' '):'';
+    const knownEnglish={닥스:'DAKS',헤지스:'HAZZYS',질스튜어트:'JILLSTUART',마에스트로:'MAESTRO',알레그리:'ALLEGRI',티엔지티:'TNGT',던스트:'DUNST'};
+    const tags=list.filter(t=>!key(name).includes(key(t)));if(knownEnglish[brand])tags.push(knownEnglish[brand]);
+    return {name,tags:tags.slice(0,20),review:!brand||!cat};
+  }
+  return Object.freeze({make,banned,checkTitle});
+})();
+window.LF36Text=LF36Text;
+
 function lfCopyFacts3(d, override={}) {
   const tidy=s=>String(s??'').replace(/[\u0000-\u001f]+/g,' ').replace(/\s+/g,' ').trim();
   const uniq=xs=>[...new Set(xs.map(tidy).filter(Boolean))];
   const confirmed=s=>s&&!/미확인|확인\s*필요|상세\s*(페이지|설명)|^색상\s*\d+$/.test(s);
   const source=tidy(d.lfName||d.title);
   // Keep useful bracketed attributes but exclude promotions, prices and stray SKU text from prose.
-  const title=tidy(source.replace(/\[[^\]]*(특가|혜택|할인|쿠폰|단독|아울렛|사은|적립|최저가|배송)[^\]]*\]/g,' ').replace(/(?:아울렛특가|단독특가|무료배송|쿠폰할인|최저가|\d+%\s*할인)/g,' ').replace(/[\[\]()]/g,' '));
+  const title=tidy(source.split(/사은품|함께 구매|코디 추천|연관 상품|증정품/)[0].replace(/\[[^\]]*(특가|혜택|할인|쿠폰|단독|아울렛|사은|적립|최저가|배송)[^\]]*\]/g,' ').replace(/(?:아울렛특가|단독특가|무료배송|쿠폰할인|최저가|\d+%\s*할인)/g,' ').replace(/[\[\]()]/g,' '));
   const knownBrands=[[/닥스|\bDAKS\b/i,'닥스'],[/헤지스|\bHAZZYS\b/i,'헤지스'],[/질스튜어트|JILL\s*STUART/i,'질스튜어트'],[/마에스트로|MAESTRO/i,'마에스트로'],[/알레그리|ALLEGRI/i,'알레그리'],[/티엔지티|\bTNGT\b/i,'티엔지티'],[/\bATCORNER\b|앳코너/i,'앳코너'],[/던스트|\bDUNST\b/i,'던스트']];
   const brand=tidy(override.brand||d.brand||knownBrands.find(([re])=>re.test(title))?.[1]||'');
-  const categories=[[/클러치(?:백)?/,'클러치백'],[/머플러|목도리/,'머플러'],[/원피스|드레스(?!셔츠)/,'원피스'],[/다운\s*(?:코트|재킷|자켓|점퍼)|패딩|다운점퍼/,'패딩'],[/가디건|카디건/,'가디건'],[/스웨터/,'스웨터'],[/니트/,'니트'],[/(?:긴팔|긴소매|롱슬리브).{0,18}(?:티셔츠|티\b|티(?=\s|$))|(?:티셔츠).{0,18}(?:긴팔|긴소매)/,'긴팔티셔츠'],[/(?:반팔|반소매).{0,18}(?:티셔츠|티(?=\s|$))|티셔츠.{0,18}(?:반팔|반소매)/,'반팔티'],[/후드\s*티/,'후드티'],[/맨투맨/,'맨투맨'],[/티셔츠|카라티|긴팔티|반팔티/,'티셔츠'],[/블라우스/,'블라우스'],[/셔츠|남방/,'셔츠'],[/재킷|자켓/,'재킷'],[/코트/,'코트'],[/점퍼|잠바/,'점퍼'],[/아우터/,'아우터'],[/베스트|조끼/,'조끼'],[/바지|팬츠|슬랙스|데님진/,'바지'],[/스커트|치마/,'스커트']];
+  const categories=[[/클러치(?:백)?/,'클러치백'],[/머플러|목도리/,'머플러'],[/원피스|드레스(?!셔츠)/,'원피스'],[/다운\s*(?:코트|재킷|자켓|점퍼)|패딩|다운점퍼/,'패딩'],[/가디건|카디건/,'가디건'],[/스웨터/,'스웨터'],[/니트/,'니트'],[/(?:긴팔|긴소매|롱슬리브).{0,18}(?:티셔츠|티\b|티(?=\s|$))|(?:티셔츠).{0,18}(?:긴팔|긴소매)/,'긴팔티셔츠'],[/(?:반팔|반소매).{0,18}(?:티셔츠|티(?=\s|$))|티셔츠.{0,18}(?:반팔|반소매)/,'반팔티'],[/후드\s*티/,'후드티'],[/맨투맨/,'맨투맨'],[/티셔츠|카라티|긴팔티|반팔티/,'티셔츠'],[/블라우스/,'블라우스'],[/셔츠|남방/,'셔츠'],[/재킷|자켓/,'재킷'],[/코트/,'코트'],[/점퍼|잠바/,'점퍼'],[/아우터/,'아우터'],[/베스트|조끼/,'조끼'],[/바지|팬츠|슬랙스|데님진/,'바지'],[/스커트|치마/,'스커트'],[/백팩/,'백팩'],[/숄더백/,'숄더백'],[/크로스백/,'크로스백'],[/토트백/,'토트백'],[/가방/,'가방'],[/스카프/,'스카프'],[/볼캡/,'볼캡'],[/모자/,'모자'],[/벨트/,'벨트'],[/장갑/,'장갑'],[/지갑/,'지갑']];
   const cat=tidy(override.category||categories.find(([re])=>re.test(title))?.[1]||'');
   const n=d.notice||{}, mat=confirmed(tidy(n.material))?tidy(n.material):'';
   const shell=mat.split(/안감|배색|충전재|충전물|주머니|심지|부속/)[0];
@@ -124,12 +170,10 @@ function lfCopyFacts3(d, override={}) {
   pick('style',[[/비즈니스/,'비즈니스'],[/캐주얼/,'캐주얼'],[/데일리/,'데일리'],[/데이트/,'데이트'],[/일상/,'일상']]);
   pick('season',[[/겨울|동절기/,'겨울'],[/여름|하절기/,'여름'],[/봄(?!버)/,'봄'],[/가을/,'가을']]);
   const extras=[[/부드러운\s*촉감/,'부드러운 촉감'],[/신축성(?!\s*(?:없|낮|미확인))/,'신축성'],[/가벼운\s*착용감/,'가벼운 착용감'],[/통기성(?!\s*(?:없|낮|미확인))/,'통기성'],[/편안한\s*착용감/,'편안한 착용감'],[/탈부착\s*퍼\s*후드/,'탈부착 퍼 후드'],[/허리\s*드로스트링/,'허리 드로스트링'],[/집업|지퍼\s*여밈/,'집업 여밈'],[/숏\s*(?:기장|패딩)/,'숏 기장'],[/하프\s*기장/,'하프 기장'],[/롱\s*(?:기장|패딩)/,'롱 기장'],[/힙을\s*덮는\s*기장/,'힙을 덮는 기장'],[/방풍성(?!\s*(?:없|미확인))/,'방풍성'],[/투습성(?!\s*(?:없|미확인))/,'투습성'],[/발수성(?!\s*(?:없|미확인))/,'발수성'],[/체크\s*안감/,'체크 안감'],[/코듀로이\s*(?:카라|칼라)/,'코듀로이 카라']].filter(([r])=>r.test(text)).map(([,v])=>v);
-  const rawFeatures=[['탈부착',/탈부착/],['후드',/후드/],['집업',/집업|지퍼\s*여밈/],['퀼팅',/퀼팅/],['자수',/자수/],['케이블',/케이블/],['플리츠',/플리츠/],['골지',/골지/],['버튼',/버튼|단추/],['포켓',/포켓/],['하프',/하프\s*기장/],['경량',/경량/]].filter(([,r])=>r.test(title)).map(([t])=>t);
-  const materialWord=cp.material?.replace(/\s/g,''), patternWord=cp.pattern?.replace(/ 패턴$/,'').replace('전체 퀼팅','퀼팅');
-  const tokens=uniq([gender,cp.season,materialWord,patternWord,cp.neck?.replace(/\s/g,''),...rawFeatures,cp.feature?.replace('슬림한 실루엣','슬림핏'),cp.style,colors.length===1&&colors[0],colors.length>1&&colors.length+'컬러',sizes.length>1&&sizes.length+'사이즈',d.code&&/^[A-Z\d_-]{3,24}$/i.test(d.code)?d.code:''].filter(Boolean)).filter(w=>w!==brand&&w!==cat);
-  const mid=tokens.slice(0,5); const words=uniq([brand,...mid,cat]);const name=words.join(' ');
-  return {brand,cat,cp,extras,name,desc:retailCopy37(d,{title,brand,cat,cp,colors},override.choices),review:!brand||!cat||name.split(/\s+/).length<6||name.split(/\s+/).length>7};
+  const generated=LF36Text.make(d,brand,cat);
+  return {brand,cat,cp,extras,...generated,desc:retailCopy37(d,{title,brand,cat,cp,colors},override.choices)};
 }
+window.LF36Suggest=d=>lfCopyFacts3(d);
 function applyWear32(d){const variants=d.variants?.length?d.variants:[d];const keys=['신축성','두께감','촉감','비침','안감'];const issues=[];for(const [i,k] of keys.entries()){const sel=document.getElementById('fabricVal'+i);if(!sel)continue;const values=variants.map(p=>p.wear?.[k]||'');let v=values[0]&&values.every(x=>x===values[0])?values[0]:'';
  if(v==='부분 안감'&&!Array.from(sel.options).some(o=>o.value===v))sel.add(new Option(v,v));if(!Array.from(sel.options).some(o=>o.value===v))v='';sel.value=v;sel.dispatchEvent(new Event('change',{bubbles:true}));if(!v)issues.push(k)}const lab=document.getElementById('fabricVal4');if(lab){let hint=document.getElementById('wear32Hint');if(!hint){hint=document.createElement('p');hint.id='wear32Hint';lab.closest('fieldset')?.append(hint)}hint.textContent=issues.length?'미확인 또는 색상별 값이 다름: '+issues.join(', ')+' (자동 강조 안 함)':'LF몰 착용 정보 5개 항목 반영 완료'}}
 function applyCopy3(d){
@@ -141,12 +185,12 @@ function applyCopy3(d){
   document.querySelectorAll('#lfCpChecks input[type=checkbox]').forEach(e=>{e.checked=initial.extras.includes(e.value)});
   const cp=el('copy'),memo=el('sCopy');if(cp){cp.dataset.edited='1';set('copy',initial.desc);const existing=document.getElementById('lf33DraftHint');if(existing)existing.remove();const hint=document.createElement('small');hint.id='lf33DraftHint';hint.textContent=initial.desc.split('\n').filter(Boolean).length<4?'확인된 특징만 간결하게 담았습니다. 직접 수정할 수 있습니다.':'디자인·소재·디테일·코디를 담은 판매용 초안입니다.';cp.after(hint)}set('sCopy',initial.desc);
   if(cp&&memo&&!cp.dataset.lfCopySync){cp.dataset.lfCopySync='1';cp.addEventListener('input',()=>{memo.value=cp.value});memo.addEventListener('input',()=>{if(cp.value!==memo.value){cp.value=memo.value;cp.dataset.edited='1';cp.dispatchEvent(new Event('input',{bubbles:true}))}})}
-  const nm=el('sName');if(nm){let tools=el('lfTitleTools3');if(!tools){tools=document.createElement('div');tools.id='lfTitleTools3';nm.closest('label')?.insertAdjacentElement('afterend',tools)}tools.replaceChildren();tools.style.cssText='font-size:12px;color:#45584d;align-self:end;padding-bottom:8px';const msg=document.createElement('span'),btn=document.createElement('button');btn.type='button';btn.textContent='상품명 다시 제안';btn.onclick=()=>{const f=lfCopyFacts3(d,{brand:el('sBrand')?.value||el('brand')?.value,category:el('prod')?.value});set('sName',f.name);report(f)};const report=f=>{msg.textContent=f.review?'브랜드·상품 종류 또는 확인된 단어가 부족합니다. 제안명을 직접 보완해 주세요. ':'브랜드 첫 단어 · 상품 종류 마지막 단어. 필요하면 직접 수정하세요. '};report(initial);tools.append(msg,btn)}
+  const nm=el('sName');if(nm){let tools=el('lfTitleTools3');if(!tools){tools=document.createElement('div');tools.id='lfTitleTools3';nm.closest('label')?.insertAdjacentElement('afterend',tools)}tools.replaceChildren();tools.style.cssText='font-size:12px;color:#45584d;align-self:end;padding-bottom:8px';const msg=document.createElement('span'),btn=document.createElement('button');btn.type='button';btn.textContent='상품명 다시 제안';btn.onclick=()=>{const f=lfCopyFacts3(d,{brand:el('sBrand')?.value||el('brand')?.value,category:el('prod')?.value});set('sName',f.name);report(f)};const report=f=>{msg.textContent=f.review?'브랜드 또는 상품 종류가 미확인입니다. 원본을 확인하고 상품명을 직접 보완하세요. ':'확인된 브랜드·속성·상품 종류로 제안했습니다. 상위 노출을 보장하지 않습니다. '};report(initial);tools.append(msg,btn)}
   const regen=document.getElementById('lfMakeCopy');if(regen){regen.textContent='선택한 특징으로 판매 설명 다시 쓰기';regen.onclick=()=>{const choices={};choices.extra=Array.from(document.querySelectorAll('#lfCpChecks input:checked'),e=>e.value);document.querySelectorAll('.lfCpGrid [data-cp]').forEach(s=>{if(s.value&&s.value!=='해당 없음')choices[s.dataset.cp]=s.value});if(cp.value.trim()&&cp.value!==regen.dataset.last&&!confirm('직접 수정한 설명을 새 초안으로 바꿀까요?'))return;const fresh=lfCopyFacts3(d,{brand:el('sBrand')?.value,category:el('prod')?.value,choices}).desc;set('copy',fresh);set('sCopy',fresh);regen.dataset.last=fresh};regen.dataset.last=initial.desc;const alt=el('draft');if(alt)alt.onclick=()=>regen.click();const help=regen.nextElementSibling;if(help?.tagName==='SMALL')help.textContent='확인된 상품 정보로 최대 네 문장을 작성합니다.'}
   return initial;
 }
 
 function tidy(){for(const h of document.querySelectorAll('main h1, main h2, main h3')){if(/월\s*1\s*억\s*매출/.test(h.textContent))h.textContent='상품 제작';if(/고정\s*배너와\s*사이즈표/.test(h.textContent))h.textContent='사이즈표'}for(const p of document.querySelectorAll('main p,main small,main .hint'))if(!p.children.length&&p.textContent.includes('정품 안내')&&p.textContent.includes('구매 전 유의사항'))p.hidden=true}
 tidy();document.getElementById('lfLoad').textContent='변경한 사진 역할 적용';
-window.LF29Mount=async d=>{data={...d,items:d.items.map(x=>({...x}))};const roleKey='lf30:roles:'+d.id;const photoKey=x=>JSON.stringify([x.sourceCode||'',x.color,x.url]);try{const saved=JSON.parse(localStorage.getItem(roleKey)||'{}');for(const x of data.items){const r=saved[photoKey(x)];if(Object.hasOwn(roleIndex,r)||['추가 디테일','제외'].includes(r))x.role=r}}catch{}fileCache.clear();cards.replaceChildren();source.textContent=d.colors.join(' / ')+' · '+d.items.length+'장. 역할을 바꾼 후 적용하세요.';const labels=[...Object.keys(roleIndex),'추가 디테일','제외'];const bindings=[];for(const x of data.items){const el=document.createElement('div');el.className='lfInCard';const im=document.createElement('img');im.src=x.url;im.alt=x.color+' '+x.role;const sel=document.createElement('select');sel.ariaLabel=x.color+' '+x.key+' 사진 역할';for(const role of labels)sel.add(new Option(role,role));sel.value=x.role;bindings.push([x,sel]);sel.onchange=()=>{const old=x.role,role=sel.value;if(roleIndex[role]!==undefined){const other=bindings.find(([y])=>y!==x&&y.color===x.color&&y.role===role);if(other){other[0].role=old;other[1].value=old}}x.role=role;try{localStorage.setItem(roleKey,JSON.stringify(Object.fromEntries(data.items.map(i=>[photoKey(i),i.role]))))}catch{}result.textContent='역할이 변경되었습니다. 변경한 사진 역할 적용을 눌러주세요.'};el.append(im,document.createTextNode(x.color+' · '+x.key),sel);cards.append(el)}applyCopy3(d);await applyAll()};
+window.LF29Mount=async(d,opts={})=>{data={...d,items:d.items.map(x=>({...x}))};const roleKey='lf30:roles:'+d.id;const photoKey=x=>JSON.stringify([x.sourceCode||'',x.color,x.url]);const params=new URLSearchParams(location.search);const rid=opts?.rid||(params.get('make')===d.id?params.get('lf35'):null);const draftKey=rid?'lf35:roles:'+rid+':'+d.id:null;const readRoles=()=>draftKey?sessionStorage.getItem(draftKey):localStorage.getItem(roleKey);try{const saved=JSON.parse(readRoles()||'{}');for(const x of data.items){const r=saved[photoKey(x)];if(Object.hasOwn(roleIndex,r)||['추가 디테일','제외'].includes(r))x.role=r}}catch{}fileCache.clear();cards.replaceChildren();source.textContent=d.colors.join(' / ')+' · '+d.items.length+'장. 역할을 바꾼 후 적용하세요.';const labels=[...Object.keys(roleIndex),'추가 디테일','제외'];const bindings=[];for(const x of data.items){const el=document.createElement('div');el.className='lfInCard';const im=document.createElement('img');im.src=x.url;im.alt=x.color+' '+x.role;const sel=document.createElement('select');sel.ariaLabel=x.color+' '+x.key+' 사진 역할';for(const role of labels)sel.add(new Option(role,role));sel.value=x.role;bindings.push([x,sel]);sel.onchange=()=>{const old=x.role,role=sel.value;if(roleIndex[role]!==undefined){const other=bindings.find(([y])=>y!==x&&y.color===x.color&&y.role===role);if(other){other[0].role=old;other[1].value=old}}x.role=role;try{const snapshot=JSON.stringify(Object.fromEntries(data.items.map(i=>[photoKey(i),i.role])));if(draftKey)sessionStorage.setItem(draftKey,snapshot);localStorage.setItem(roleKey,snapshot)}catch{}result.textContent='역할이 변경되었습니다. 변경한 사진 역할 적용을 눌러주세요.'};el.append(im,document.createTextNode(x.color+' · '+x.key),sel);cards.append(el)}applyCopy3(d);await applyAll()};
 })();
